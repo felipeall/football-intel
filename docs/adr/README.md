@@ -24,3 +24,4 @@
 - [22. PoC runs locally; MVP is hosted behind GitHub login](0022-hosting.md)
 - [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md)
 - [24. Provider-neutral agent: Claude Tool Runner behind an AgentRunner port](0024-provider-neutral-agent.md)
+- [25. Claude backend: Anthropic API, configurable per deployment](0025-claude-backend.md)
