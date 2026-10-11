@@ -1,6 +1,6 @@
 # football-intel — Domain Context
 
-Football intelligence platform: durable ingestion of live football data (Temporal) into a unified database, with an AI scouting agent on top. Phase 2 adds a transfer rumor tracker.
+Football intelligence platform: durable ingestion of live football data (Temporal) into a unified database, with an AI scouting agent on top. A transfer rumor tracker is in the backlog.
 
 Decisions are recorded in [`docs/adr/`](docs/adr/).
 
@@ -19,4 +19,4 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Style Profile** — A per-player vector built from per-90 statistics and the spatial distribution of Actions over a season window, used for similarity search.
 - **Scouting Query** — A natural-language request to the agent ("left-back under 23, under €15M, similar to X").
 - **Scouting Report** — A generated, cited write-up about one player, produced by a long-running durable job.
-- **Rumor** *(phase 2)* — A structured claim extracted from news: player, from club, to club, fee, journalist, date. Resolved against actual transfers when the window closes.
+- **Rumor** *(backlog)* — A structured claim extracted from news: player, from club, to club, fee, journalist, date. Resolved against actual transfers when the window closes.

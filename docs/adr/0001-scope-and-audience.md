@@ -7,7 +7,7 @@ Portfolio project for GitHub (felipeall). Prior work is data-engineering heavy (
 
 ## Decision
 - Audience: both AI/LLM engineering and data/platform engineering roles, weighted toward AI.
-- Product core: AI Scout Agent is the MVP. Transfer Rumor Tracker is phase 2.
+- Product core: AI Scout Agent. Transfer Rumor Tracker moved to the backlog on 2026-10-12 (ADRs 16–17, Deferred).
 - Budget: ~8 hours/week, demoable MVP in ~6 weeks.
 
 ## Consequences

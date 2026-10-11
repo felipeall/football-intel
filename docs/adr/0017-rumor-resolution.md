@@ -1,6 +1,6 @@
-# 17. Rumor resolution and reliability scoring (phase 2)
+# 17. Rumor resolution and reliability scoring (backlog)
 
-Status: Accepted — 2026-10-11
+Status: Deferred — 2026-10-12 (backlog, see ADR 1)
 
 ## Decision
 Each Rumor is a long-running Temporal workflow that sleeps on a durable timer until its transfer window closes + 7 days, then checks Transfermarkt transfers and records a grade:

@@ -12,7 +12,7 @@
 - **Answers scouting questions** through an AI agent (Claude) exposed as an MCP server: *"left-back under 23, under €15M, similar to Grimaldo"*.
 - **Measures itself** with an eval suite in CI and LLM tracing in Langfuse.
 
-Planned for phase 2: a transfer rumor tracker that grades journalists' reliability against real transfers.
+Backlog: a transfer rumor tracker that grades journalists' reliability against real transfers, and Opta feeds.
 
 ## Architecture (planned)
 

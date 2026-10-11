@@ -15,8 +15,8 @@
 - [13. Agent tool surface: typed tools plus guarded SQL fallback](0013-agent-tools.md)
 - [14. Scraping access method](0014-scraping-access.md)
 - [15. Tooling baseline](0015-tooling-baseline.md)
-- [16. Rumor sources (phase 2)](0016-rumor-sources.md)
-- [17. Rumor resolution and reliability scoring (phase 2)](0017-rumor-resolution.md)
+- [16. Rumor sources (backlog)](0016-rumor-sources.md)
+- [17. Rumor resolution and reliability scoring (backlog)](0017-rumor-resolution.md)
 - [18. LLM observability: self-hosted Langfuse](0018-llm-observability.md)
 - [19. License: MIT](0019-license.md)
 - [20. MVP milestones](0020-mvp-milestones.md) — superseded
