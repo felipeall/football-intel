@@ -2,7 +2,7 @@
 
 > Durable football data ingestion with Temporal, and an AI scouting agent on top.
 
-**Status:** early development — local proof of concept, week 1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](docs/adr/0023-milestones-v2.md).
+**Status:** early development — local proof of concept, week 1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](#roadmap).
 
 ## What it does
 
@@ -11,8 +11,6 @@
 - **Builds style profiles** from per-90 statistics and the on-pitch location of each player's actions, stored in pgvector for similarity search.
 - **Answers scouting questions** through an AI agent (Claude) exposed as an MCP server: *"left-back under 23, under €15M, similar to Grimaldo"*.
 - **Measures itself** with an eval suite in CI and LLM tracing in Langfuse.
-
-Backlog: a transfer rumor tracker that grades journalists' reliability against real transfers, and Opta feeds.
 
 ## Architecture (planned)
 
@@ -29,6 +27,22 @@ Backlog: a transfer rumor tracker that grades journalists' reliability against r
 ```
 
 Ingestion stays on a residential connection, where the sources answer; the hosted app serves derived outputs only ([ADR 22](docs/adr/0022-hosting.md)).
+
+## Roadmap
+
+Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
+
+| Week | Phase | Delivery | Status |
+|---|---|---|---|
+| 1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | 🚧 |
+| 2 | PoC | Sofascore, post-match workflows, three-season backfill | ⏳ |
+| 3 | PoC | Understat, dbt, identity resolution | ⏳ |
+| 4 | PoC | Style profiles, agent tools, MCP server — Claude Desktop answers locally | ⏳ |
+| 5 | MVP | Evals in CI, durable scouting report job | ⏳ |
+| 6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
+| 7 | MVP | Deploy (Neon, Fly.io, Vercel); local workers sync to Neon | ⏳ |
+
+**Backlog:** transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 
 ## Documentation
 
