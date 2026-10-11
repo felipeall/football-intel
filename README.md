@@ -37,12 +37,12 @@ Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
 | 1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | 🚧 |
 | 2 | PoC | Sofascore, post-match workflows, three-season backfill | ⏳ |
 | 3 | PoC | Understat, dbt, identity resolution | ⏳ |
-| 4 | PoC | Style profiles, agent tools, MCP server — Claude Desktop answers locally | ⏳ |
+| 4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
 | 5 | MVP | Evals in CI, durable scouting report job | ⏳ |
 | 6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
 | 7 | MVP | Deploy (Neon, Fly.io, Vercel); local workers sync to Neon | ⏳ |
 
-**Backlog:** OpenAI-compatible runner (OpenAI, Ollama, vLLM) and provider comparison evals, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
+**Backlog:** `LiteLLMRunner` (OpenAI, Gemini, Bedrock, Ollama, vLLM) and provider comparison evals, LiteLLM gateway, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 
 ## Documentation
 

@@ -19,7 +19,10 @@ One agent harness, with the provider behind ports.
 
 **Implementations:**
 - MVP: `ClaudeRunner` and `ClaudeClient`, built on the Anthropic SDK Tool Runner.
-- Backlog: `OpenAICompatibleRunner` / `OpenAICompatibleClient`, covering OpenAI and open-source models served by Ollama or vLLM.
+- Test double (week 4): `ScriptedRunner`, which replays scripted tool calls and answers. It runs the conformance suite alongside `ClaudeRunner`, proving the port does not depend on Claude-only behaviour, and lets agent tests run in CI without tokens.
+- Backlog: `LiteLLMRunner` / `LiteLLMClient` on the LiteLLM SDK, covering OpenAI, Gemini, Bedrock, Mistral and open-source models (Ollama, vLLM). Triggers: a provider comparison in the README, a fallback during Claude outages, local development without tokens, or a target employer's stack. Pin the exact version with hashes (`uv.lock`) and upgrade deliberately: LiteLLM 1.82.7 and 1.82.8 shipped credential-stealing malware on PyPI on 2026-03-24.
+- LiteLLM stays off the Claude path: translating to OpenAI format loses thinking blocks, fine-grained caching, server-side fallbacks and task budgets.
+- Backlog: LiteLLM proxy as a gateway, only if several providers serve hosted traffic.
 
 **Modularity rules:**
 - Tools are plain domain functions with Pydantic input/output models, defined once. Each provider adapter converts them to its own tool format; the MCP server wraps the same functions.
