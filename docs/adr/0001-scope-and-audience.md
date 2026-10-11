@@ -11,4 +11,4 @@ Portfolio project for GitHub (felipeall). Prior work is data-engineering heavy (
 - Budget: ~8 hours/week, demoable MVP in ~6 weeks.
 
 ## Consequences
-Scope must stay small enough to finish; v1 stalled as a WIP. Anything not on the MVP path is deferred to phase 2.
+Scope must stay small enough to finish; v1 stalled as a WIP. Anything not on the MVP path goes to the backlog.
