@@ -28,6 +28,35 @@
 
 Ingestion stays on a residential connection, where the sources answer; the hosted app serves derived outputs only ([ADR 22](docs/adr/0022-hosting.md)).
 
+## Tech stack
+
+ADR numbers refer to [`docs/adr/`](docs/adr/).
+
+| Layer | Technology | Runs on | Phase | ADR |
+|---|---|---|---|---|
+| Language & tooling | Python 3.13, `uv`, `ruff`, `pyright`, `pytest`, `import-linter`, `gitleaks` | local + CI | PoC | 15, 24 |
+| Orchestration | Temporal: Schedules, post-match workflows, durable timers, signals | local | PoC | 5, 6 |
+| Source: Transfermarkt | [`transfermarkt-api`](https://github.com/felipeall/transfermarkt-api) over HTTP | local | PoC | 2, 3 |
+| Source: Sofascore | `curl_cffi` browser impersonation, Playwright fallback | local (residential IP) | PoC | 3, 14 |
+| Source: Understat | HTTP | local | PoC | 3 |
+| Ingestion resilience | Per-source rate limits, retries with backoff, circuit breaker, raw response cache | local | PoC | 4 |
+| Database | Postgres 17 + pgvector (raw JSONB → staging → marts) | local (Docker) | PoC | 11 |
+| Transforms | dbt (Postgres adapter), run as a Temporal activity | local | PoC | 11 |
+| Identity resolution | Rules → fuzzy matching → LLM judge (Claude Haiku 5.5) → human review via Temporal signal | local | PoC | 6 |
+| Style profiles | Per-90 stats + 12×8 pitch grid, cosine similarity in pgvector | local | PoC | 12 |
+| Agent harness | `AgentRunner` / `LLMClient` ports; `ClaudeRunner` (Anthropic SDK Tool Runner); `ScriptedRunner` test double | local + hosted | PoC | 24 |
+| LLM | Anthropic API (backend configurable); Claude Sonnet 5.5 for chat, reports and eval judge; Claude Haiku 5.5 for identity resolution | API | PoC | 24, 25 |
+| Agent tools | Typed tools + read-only SQL fallback on marts | local + hosted | PoC | 13 |
+| MCP | MCP server over the same tools (Claude Desktop, Claude Code) | local | PoC | 8 |
+| Observability | Langfuse — self-hosted locally, Langfuse Cloud for hosted traffic | local / cloud | PoC / MVP | 18, 22 |
+| Evals | Deterministic checks + LLM judge in GitHub Actions, README badge | CI | MVP | 9 |
+| Long-running jobs | Temporal workflow, one Scouting Report per activity | local | MVP | 24 |
+| API | FastAPI | Fly.io | MVP | 22 |
+| UI | Next.js chat with inline charts | Vercel | MVP | 8, 22 |
+| Auth & limits | GitHub login (Auth.js), 10 queries per user per day, Anthropic console spend limit | hosted | MVP | 22 |
+| Hosted database | Neon Postgres + pgvector (read-only for the app; local workers write) | cloud | MVP | 22 |
+| CI/CD | GitHub Actions: lint, types, tests, import contracts, evals | GitHub | PoC → MVP | 15 |
+
 ## Roadmap
 
 Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
