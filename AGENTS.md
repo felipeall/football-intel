@@ -4,7 +4,7 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 
 ## Read before working
 
-- `CONTEXT.md` — the domain glossary. Name code, tables and tests with its terms (Player, Source Record, Raw Response, Appearance, Action, Style Profile…).
+- `GLOSSARY.md` — the domain glossary. Name code, tables and tests with its terms (Player, Source Record, Raw Response, Appearance, Action, Style Profile…).
 - `docs/adr/` — accepted decisions. Read the ADRs touching your area before changing it; a change that contradicts one needs a new ADR first.
 - `CONVENTIONS.md` — commit, branch and pull request format. Follow it for every commit.
 - `docs/agent-skills.md` — vendor skills enabled for this repo (Temporal, Pydantic, Langfuse, …). Load the matching skill before working with that technology; add new ones by its checklist.
@@ -20,4 +20,4 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - Pick models by Model Role through configuration; model IDs live in configuration only.
 - A new provider is done when it passes the shared runner conformance suite.
 - Chat runs the runner directly; Temporal is for ingestion and long-running jobs.
-- A new domain term goes into `CONTEXT.md` in the same change.
+- A new domain term goes into `GLOSSARY.md` in the same change.

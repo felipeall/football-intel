@@ -1,4 +1,4 @@
-# football-intel — Domain Context
+# football-intel — Glossary
 
 Football intelligence platform: durable ingestion of live football data (Temporal) into a unified database, with an AI scouting agent on top. A transfer rumor tracker is in the backlog.
 

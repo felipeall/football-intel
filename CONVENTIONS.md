@@ -22,7 +22,7 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
 |---|---|
 | `feat` | a new capability |
 | `fix` | a bug fix |
-| `docs` | documentation only (README, ADRs, `CONTEXT.md`) |
+| `docs` | documentation only (README, ADRs, `GLOSSARY.md`) |
 | `refactor` | code change that neither fixes a bug nor adds a feature |
 | `perf` | performance improvement |
 | `test` | adding or correcting tests or evals |
@@ -69,4 +69,4 @@ ci: run eval suite on pull requests
 
 - Every architectural decision gets an ADR in `docs/adr/NNNN-short-title.md`, and a line in `docs/adr/README.md`.
 - Superseding a decision: write a new ADR and set the old one's status to `Superseded by ADR-NNNN`.
-- New domain terms go in `CONTEXT.md` in the same change that introduces them.
+- New domain terms go in `GLOSSARY.md` in the same change that introduces them.
