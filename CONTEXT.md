@@ -20,3 +20,6 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Scouting Query** — A natural-language request to the agent ("left-back under 23, under €15M, similar to X").
 - **Scouting Report** — A generated, cited write-up about one player, produced by a long-running durable job.
 - **Rumor** *(backlog)* — A structured claim extracted from news: player, from club, to club, fee, journalist, date. Resolved against actual transfers when the window closes.
+- **Provider** — An LLM vendor or serving stack (Anthropic; later OpenAI-compatible endpoints such as OpenAI, Ollama, vLLM), implemented as an adapter behind the agent ports.
+- **Runner** — A Provider's implementation of the `AgentRunner` port: the tool loop that answers a Scouting Query.
+- **Model Role** — A named job an LLM does (`chat`, `report`, `identity_judge`, `eval_judge`). Configuration maps each role to a Provider and model ID.

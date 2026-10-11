@@ -9,7 +9,7 @@
 - **Ingests live football data** from Transfermarkt (via [`transfermarkt-api`](https://github.com/felipeall/transfermarkt-api)), Sofascore and Understat, using Temporal workflows built for unreliable sources: per-source rate limits, retries with backoff, circuit breakers, and a cache of every raw response.
 - **Unifies players across sources** with an identity resolution workflow: deterministic rules, fuzzy matching, an LLM judge for ambiguous cases, and human review via Temporal signals.
 - **Builds style profiles** from per-90 statistics and the on-pitch location of each player's actions, stored in pgvector for similarity search.
-- **Answers scouting questions** through an AI agent (Claude) exposed as an MCP server: *"left-back under 23, under €15M, similar to Grimaldo"*.
+- **Answers scouting questions** through a provider-neutral AI agent (Claude first) exposed as an MCP server: *"left-back under 23, under €15M, similar to Grimaldo"*.
 - **Measures itself** with an eval suite in CI and LLM tracing in Langfuse.
 
 ## Architecture (planned)
@@ -42,7 +42,7 @@ Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
 | 6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
 | 7 | MVP | Deploy (Neon, Fly.io, Vercel); local workers sync to Neon | ⏳ |
 
-**Backlog:** transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
+**Backlog:** OpenAI-compatible runner (OpenAI, Ollama, vLLM) and provider comparison evals, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 
 ## Documentation
 

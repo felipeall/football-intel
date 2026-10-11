@@ -1,6 +1,6 @@
 # 7. Agent architecture and model mix
 
-Status: Accepted — 2026-10-11
+Status: Superseded by ADR 24 — 2026-10-12
 
 ## Decision
 - Interactive chat path: Anthropic SDK directly, without Temporal, for low latency and streaming.

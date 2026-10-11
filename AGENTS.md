@@ -15,6 +15,8 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - Keep secrets in `.env` only. Strip credentials from URLs before logging or storing them.
 - Scraped data lives under `data/` or in the database, both outside version control.
 - Temporal workflows stay deterministic: all I/O (HTTP, database, LLM calls) runs in activities.
-- The interactive chat path calls the Anthropic SDK directly; Temporal is for ingestion and long-running jobs (ADR 7).
-- Model IDs come from configuration, never hard-coded.
+- The agent is provider-neutral (ADR 24): core code talks to the `AgentRunner` and `LLMClient` ports and imports provider SDKs only inside `agent/providers/<provider>/`.
+- Pick models by Model Role through configuration; model IDs live in configuration only.
+- A new provider is done when it passes the shared runner conformance suite.
+- Chat runs the runner directly; Temporal is for ingestion and long-running jobs.
 - A new domain term goes into `CONTEXT.md` in the same change.

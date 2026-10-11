@@ -6,7 +6,7 @@
 - [4. Scraping posture: resilient, polite, no redistribution](0004-scraping-posture.md)
 - [5. Coverage and refresh cadence](0005-coverage-and-refresh.md)
 - [6. Player identity resolution](0006-identity-resolution.md)
-- [7. Agent architecture and model mix](0007-agent-architecture.md)
+- [7. Agent architecture and model mix](0007-agent-architecture.md) — superseded
 - [8. Interfaces: MCP server first, thin web UI later](0008-interfaces.md)
 - [9. Evaluation strategy](0009-evals.md)
 - [10. Demo mode and documentation](0010-demo-and-documentation.md) — superseded
@@ -23,3 +23,4 @@
 - [21. Opta feeds: deferred to backlog](0021-opta-deferred.md)
 - [22. PoC runs locally; MVP is hosted behind GitHub login](0022-hosting.md)
 - [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md)
+- [24. Provider-neutral agent: Claude Tool Runner behind an AgentRunner port](0024-provider-neutral-agent.md)
