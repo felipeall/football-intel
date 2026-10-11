@@ -9,7 +9,7 @@
 - [7. Agent architecture and model mix](0007-agent-architecture.md)
 - [8. Interfaces: MCP server first, thin web UI later](0008-interfaces.md)
 - [9. Evaluation strategy](0009-evals.md)
-- [10. Demo mode and documentation](0010-demo-and-documentation.md)
+- [10. Demo mode and documentation](0010-demo-and-documentation.md) — superseded
 - [11. Transform layer: dbt on Postgres](0011-transform-layer.md)
 - [12. Style Profile: per-90 stats plus spatial grid](0012-style-profile.md)
 - [13. Agent tool surface: typed tools plus guarded SQL fallback](0013-agent-tools.md)
@@ -19,5 +19,7 @@
 - [17. Rumor resolution and reliability scoring (phase 2)](0017-rumor-resolution.md)
 - [18. LLM observability: self-hosted Langfuse](0018-llm-observability.md)
 - [19. License: MIT](0019-license.md)
-- [20. MVP milestones](0020-mvp-milestones.md)
+- [20. MVP milestones](0020-mvp-milestones.md) — superseded
 - [21. Opta feeds: deferred to backlog](0021-opta-deferred.md)
+- [22. PoC runs locally; MVP is hosted behind GitHub login](0022-hosting.md)
+- [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md)

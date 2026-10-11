@@ -1,6 +1,6 @@
 # 20. MVP milestones
 
-Status: Accepted — 2026-10-11
+Status: Superseded by ADR 23 — 2026-10-12
 
 ## Decision
 Six weeks at ~8 hours/week:

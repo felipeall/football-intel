@@ -2,7 +2,7 @@
 
 > Durable football data ingestion with Temporal, and an AI scouting agent on top.
 
-**Status:** early development (MVP week 1 of 6). See the [roadmap](docs/adr/0020-mvp-milestones.md).
+**Status:** early development — local proof of concept, week 1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](docs/adr/0023-milestones-v2.md).
 
 ## What it does
 
@@ -17,10 +17,18 @@ Planned for phase 2: a transfer rumor tracker that grades journalists' reliabili
 ## Architecture (planned)
 
 ```
-Sources ─▶ Temporal workflows ─▶ Postgres (raw JSONB) ─▶ dbt (staging ▶ marts) ─▶ pgvector
-                                                                                   │
-                                     MCP server / Next.js chat ◀── Claude agent ◀──┘
+ Developer machine                                  Hosted (MVP)
+┌──────────────────────────────────────┐     ┌──────────────────────────────────────┐
+│ Sources ─▶ Temporal workflows        │     │ Neon Postgres (marts, pgvector)      │
+│              │                       │     │   ▲ read-only                        │
+│              ▼                       │     │   │                                  │
+│ Postgres (raw JSONB) ─▶ dbt ─────────┼────▶│ FastAPI + Claude agent (Fly.io)      │
+│                                      │     │   ▲                                  │
+│ MCP server (local PoC)               │     │ Next.js chat, GitHub login (Vercel)  │
+└──────────────────────────────────────┘     └──────────────────────────────────────┘
 ```
+
+Ingestion stays on a residential connection, where the sources answer; the hosted app serves derived outputs only ([ADR 22](docs/adr/0022-hosting.md)).
 
 ## Documentation
 
