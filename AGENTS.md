@@ -29,3 +29,17 @@ Work is tracked in GitHub Issues, one GitHub milestone per roadmap milestone (M1
 - At session start: read the open issues of the current milestone (`gh issue list --milestone "<title>"`) and the latest comment on the issue you pick up.
 - At session end: comment on that issue with what was done, what is next, and any blockers.
 - Pull requests close their issues (`Closes #N`). When a milestone closes, update its row in the README roadmap.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `felipeall/football-intel`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
