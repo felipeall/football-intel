@@ -22,7 +22,8 @@
 - [20. MVP milestones](0020-mvp-milestones.md) — superseded
 - [21. Opta feeds: deferred to backlog](0021-opta-deferred.md)
 - [22. PoC runs locally; MVP is hosted behind GitHub login](0022-hosting.md)
-- [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md)
+- [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md) — superseded
 - [24. Provider-neutral agent: Claude Tool Runner behind an AgentRunner port](0024-provider-neutral-agent.md)
 - [25. Claude backend: Anthropic API, configurable per deployment](0025-claude-backend.md)
 - [26. Official agent skills, project-scoped and enabled just in time](0026-agent-skills.md)
+- [27. Milestones in sequence, without timing](0027-milestones-without-timing.md)

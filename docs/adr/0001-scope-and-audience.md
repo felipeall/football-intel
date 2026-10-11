@@ -1,6 +1,6 @@
 # 1. Scope and audience
 
-Status: Accepted — 2026-10-11
+Status: Accepted — 2026-10-11. Amended by ADR 27 (no time budget).
 
 ## Context
 Portfolio project for GitHub (felipeall). Prior work is data-engineering heavy (`football-data-platform` v1, `transfermarkt-api`). The new signal to show is AI engineering, backed by a credible data platform.

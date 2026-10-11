@@ -2,7 +2,7 @@
 
 > Durable football data ingestion with Temporal, and an AI scouting agent on top.
 
-**Status:** early development — local proof of concept, week 1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](#roadmap).
+**Status:** early development — local proof of concept, milestone M1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](#roadmap).
 
 ## What it does
 
@@ -59,17 +59,17 @@ ADR numbers refer to [`docs/adr/`](docs/adr/).
 
 ## Roadmap
 
-Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)). Work items live in [GitHub milestones](https://github.com/felipeall/football-intel/milestones).
+Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-without-timing.md)). Work items live in [GitHub milestones](https://github.com/felipeall/football-intel/milestones).
 
-| Week | Phase | Delivery | Status |
+| Milestone | Phase | Delivery | Status |
 |---|---|---|---|
-| 1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | 🚧 |
-| 2 | PoC | Sofascore, post-match workflows, three-season backfill | ⏳ |
-| 3 | PoC | Understat, dbt, identity resolution | ⏳ |
-| 4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
-| 5 | MVP | Evals in CI, durable scouting report job | ⏳ |
-| 6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
-| 7 | MVP | Deploy (Neon, Fly.io, Vercel); local workers sync to Neon | ⏳ |
+| M1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | 🚧 |
+| M2 | PoC | Sofascore, post-match workflows, three-season backfill | ⏳ |
+| M3 | PoC | Understat, dbt, identity resolution | ⏳ |
+| M4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
+| M5 | MVP | Evals in CI, durable scouting report job | ⏳ |
+| M6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
+| M7 | MVP | Deploy (Neon, Fly.io, Vercel); local workers sync to Neon | ⏳ |
 
 **Backlog:** `LiteLLMRunner` (OpenAI, Gemini, Bedrock, Ollama, vLLM) and provider comparison evals, LiteLLM gateway, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 

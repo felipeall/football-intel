@@ -1,6 +1,6 @@
 # 23. Milestones: local PoC, hosted MVP
 
-Status: Accepted — 2026-10-12. Supersedes ADR 20.
+Status: Superseded by ADR 27 — 2026-10-12. Supersedes ADR 20.
 
 ## Decision
 Seven weeks at ~8 hours/week.

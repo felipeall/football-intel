@@ -24,7 +24,7 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 
 ## Progress
 
-Work is tracked in GitHub Issues, one milestone per roadmap week.
+Work is tracked in GitHub Issues, one GitHub milestone per roadmap milestone (M1–M7).
 
 - At session start: read the open issues of the current milestone (`gh issue list --milestone "<title>"`) and the latest comment on the issue you pick up.
 - At session end: comment on that issue with what was done, what is next, and any blockers.

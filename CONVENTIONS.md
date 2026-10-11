@@ -61,7 +61,7 @@ ci: run eval suite on pull requests
 ## Branches and pull requests
 
 - `main` is always releasable.
-- Until CI exists (end of week 1), commits go straight to `main`.
+- Until CI exists (end of M1), commits go straight to `main`.
 - After that, one branch per change: `<type>/<short-description>` (`feat/sofascore-heatmaps`), merged by pull request with green CI.
 - Pull request titles follow the commit format; squash-merge so the title becomes the commit on `main`.
 
