@@ -1,0 +1,20 @@
+{
+  "enabledPlugins": {
+    "temporal@temporal-marketplace": true,
+    "pydantic@pydantic-skills": true
+  },
+  "extraKnownMarketplaces": {
+    "temporal-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "temporalio/claude-temporal-plugin"
+      }
+    },
+    "pydantic-skills": {
+      "source": {
+        "source": "github",
+        "repo": "pydantic/skills"
+      }
+    }
+  }
+}
