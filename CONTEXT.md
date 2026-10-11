@@ -1,0 +1,22 @@
+# football-intel — Domain Context
+
+Football intelligence platform: durable ingestion of live football data (Temporal) into a unified database, with an AI scouting agent on top. Phase 2 adds a transfer rumor tracker.
+
+Decisions are recorded in [`docs/adr/`](docs/adr/).
+
+## Glossary
+
+- **Source** — An external data provider the platform ingests from: Transfermarkt (via `transfermarkt-api`), Sofascore, Understat. Each source is implemented behind a common source interface.
+- **Raw Response** — The untouched payload returned by a source for one request, stored before any parsing so it can be reprocessed without re-scraping.
+- **Source Record** — A source's own representation of an entity (player, team, match), keyed by that source's ID.
+- **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source.
+- **Identity Resolution** — The process of linking Source Records to a Player: deterministic rules, then fuzzy scoring, then an LLM judge, then human review below a confidence threshold.
+- **Identity Candidate** — A proposed link between a Source Record and a Player, with a confidence score and the method that produced it.
+- **Match** — A single fixture, canonical across sources.
+- **Appearance** — One Player's participation in one Match, with minutes and per-match statistics.
+- **Action** — A located on-ball event attributed to a player in a match (pass with start/end, dribble, ball carry, defensive action), from Sofascore's rating breakdown. No timestamps or sequence.
+- **Shot** — A located shot with xG (and xGOT on Sofascore). Shots arrive from two independent sources: Sofascore and Understat.
+- **Style Profile** — A per-player vector built from per-90 statistics and the spatial distribution of Actions over a season window, used for similarity search.
+- **Scouting Query** — A natural-language request to the agent ("left-back under 23, under €15M, similar to X").
+- **Scouting Report** — A generated, cited write-up about one player, produced by a long-running durable job.
+- **Rumor** *(phase 2)* — A structured claim extracted from news: player, from club, to club, fee, journalist, date. Resolved against actual transfers when the window closes.
