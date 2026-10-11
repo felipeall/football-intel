@@ -21,3 +21,11 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - A new provider is done when it passes the shared runner conformance suite.
 - Chat runs the runner directly; Temporal is for ingestion and long-running jobs.
 - A new domain term goes into `GLOSSARY.md` in the same change.
+
+## Progress
+
+Work is tracked in GitHub Issues, one milestone per roadmap week.
+
+- At session start: read the open issues of the current milestone (`gh issue list --milestone "<title>"`) and the latest comment on the issue you pick up.
+- At session end: comment on that issue with what was done, what is next, and any blockers.
+- Pull requests close their issues (`Closes #N`). When a milestone closes, update its row in the README roadmap.

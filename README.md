@@ -59,7 +59,7 @@ ADR numbers refer to [`docs/adr/`](docs/adr/).
 
 ## Roadmap
 
-Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
+Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)). Work items live in [GitHub milestones](https://github.com/felipeall/football-intel/milestones).
 
 | Week | Phase | Delivery | Status |
 |---|---|---|---|
