@@ -25,3 +25,4 @@
 - [23. Milestones: local PoC, hosted MVP](0023-milestones-v2.md)
 - [24. Provider-neutral agent: Claude Tool Runner behind an AgentRunner port](0024-provider-neutral-agent.md)
 - [25. Claude backend: Anthropic API, configurable per deployment](0025-claude-backend.md)
+- [26. Official agent skills, project-scoped and enabled just in time](0026-agent-skills.md)

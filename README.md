@@ -78,6 +78,7 @@ Seven weeks at ~8 hours/week ([ADR 23](docs/adr/0023-milestones-v2.md)).
 - [`CONTEXT.md`](CONTEXT.md) — domain glossary
 - [`docs/adr/`](docs/adr/) — architecture decision records
 - [`CONVENTIONS.md`](CONVENTIONS.md) — commits, branches, pull requests
+- [`docs/agent-skills.md`](docs/agent-skills.md) — official agent skills enabled for coding agents
 
 ## Data disclaimer
 

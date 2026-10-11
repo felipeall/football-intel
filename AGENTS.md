@@ -7,6 +7,7 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - `CONTEXT.md` — the domain glossary. Name code, tables and tests with its terms (Player, Source Record, Raw Response, Appearance, Action, Style Profile…).
 - `docs/adr/` — accepted decisions. Read the ADRs touching your area before changing it; a change that contradicts one needs a new ADR first.
 - `CONVENTIONS.md` — commit, branch and pull request format. Follow it for every commit.
+- `docs/agent-skills.md` — vendor skills enabled for this repo (Temporal, Pydantic, Langfuse, …). Load the matching skill before working with that technology; add new ones by its checklist.
 
 ## Rules the code does not show
 

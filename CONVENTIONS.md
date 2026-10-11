@@ -35,7 +35,7 @@ Commit messages follow [Conventional Commits 1.0.0](https://www.conventionalcomm
 
 Use the area of the codebase the change touches:
 
-`sources`, `transfermarkt`, `sofascore`, `understat`, `workflows`, `identity`, `dbt`, `profiles`, `agent`, `mcp`, `evals`, `web`, `rumors`, `infra`.
+`sources`, `transfermarkt`, `sofascore`, `understat`, `workflows`, `identity`, `dbt`, `profiles`, `agent`, `mcp`, `evals`, `web`, `infra`, `skills`.
 
 Omit the scope when a change spans several areas.
 
