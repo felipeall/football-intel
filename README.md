@@ -79,12 +79,13 @@ Requires Docker with Compose.
 
 ```sh
 cp .env.example .env       # then replace the placeholder values
-docker compose up --wait   # Temporal dev server and Postgres 17 + pgvector
+docker compose up --wait   # Temporal, Postgres 17 + pgvector, Langfuse
 ```
 
 - Temporal gRPC on `localhost:7233`, web UI at <http://localhost:8233>.
 - Postgres on `localhost:5432`; data lives in the `postgres-data` volume and survives `docker compose down`. `docker compose down -v` deletes it.
 - The Temporal dev server keeps its state in memory: workflow history is lost on restart.
+- Langfuse UI at <http://localhost:3000>. The first start creates the `football-intel` organisation, project and API keys, and a user from the `LANGFUSE_INIT_USER_*` variables. Check tracing with `uv run --env-file .env scripts/langfuse_smoke.py`.
 
 ## Development
 
