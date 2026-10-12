@@ -28,3 +28,4 @@
 - [26. Official agent skills, project-scoped and enabled just in time](0026-agent-skills.md)
 - [27. Milestones in sequence, without timing](0027-milestones-without-timing.md)
 - [28. Transfermarkt through the transfermarkt-api SDK, in-process](0028-transfermarkt-sdk.md)
+- [29. Database migrations: Alembic with plain SQL](0029-migrations-alembic.md)

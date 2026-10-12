@@ -35,6 +35,22 @@ jobs:
   test:
     name: pytest
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17
+        env:
+          POSTGRES_DB: football_intel
+          POSTGRES_USER: football_intel
+          POSTGRES_PASSWORD: ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U football_intel -d football_intel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      POSTGRES_PASSWORD: ci-only
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
