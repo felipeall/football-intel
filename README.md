@@ -104,6 +104,14 @@ That is about 560 upstream requests, so at the default rate limit of one request
 
 The runs show in the Temporal UI as `squad-985-2025` and `competition-squads-GB1-2025`. Every upstream response lands in `raw.raw_responses`, untouched, before anything parses it. Scraped data stays in the database or under `data/`, never in this repository (see the [data disclaimer](#data-disclaimer)).
 
+Store one finished Sofascore Match as Raw Responses, by Sofascore event ID (the number at the end of a match page's URL):
+
+```sh
+uv run football-intel ingest-match 16363874
+```
+
+That stores the event, its lineups with per-player statistics, the shotmap, average positions, and a heatmap and rating breakdown for every player who appeared: about 70 requests, a little over a minute at the default rate. Sofascore answers plain HTTP clients with 403, so its requests go through `curl_cffi` with Chrome impersonation ([ADR 14](docs/adr/0014-scraping-access.md)); rate limit, circuit breaker and proxy are set like Transfermarkt's, with `SOFASCORE__*` variables. The run shows in the Temporal UI as `match-16363874`.
+
 Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, including timeouts, transport errors, circuit-breaker rejections and reuses of a fresh Raw Response. Print each source's outcomes and success rate per day (UTC) for the last seven days, or for a range with `--from` and `--to`:
 
 ```sh

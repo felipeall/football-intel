@@ -12,10 +12,15 @@ from football_intel.config import Settings
 from football_intel.fetch_attempts import FetchAttemptStore, SuccessRate
 from football_intel.ingestion.models import (
     CompetitionSquadsInput,
+    MatchIngestInput,
     SquadIngestInput,
     SquadIngestResult,
 )
-from football_intel.ingestion.workflows import CompetitionSquadsWorkflow, SquadIngestWorkflow
+from football_intel.ingestion.workflows import (
+    CompetitionSquadsWorkflow,
+    MatchIngestWorkflow,
+    SquadIngestWorkflow,
+)
 from football_intel.sources.transfermarkt.competitions import PREMIER_LEAGUE
 
 
@@ -66,6 +71,21 @@ async def ingest_competition(
         print(f"  {_squad_line(squad)}")
     if result.failed_club_ids:
         print(f"Failed clubs: {', '.join(result.failed_club_ids)}")
+
+
+async def ingest_match(settings: Settings, event_id: int, refresh: bool) -> None:
+    client = await _client(settings)
+    result = await client.execute_workflow(
+        MatchIngestWorkflow.run,
+        MatchIngestInput(event_id=event_id, refresh=refresh),
+        id=f"match-{event_id}",
+        task_queue=settings.temporal_task_queue,
+    )
+    source = "cache hit, nothing fetched" if result.cache_hit else "fetched"
+    print(
+        f"Match {result.event_id} ({result.name}): {result.players} players, "
+        f"{result.raw_responses} Raw Responses stored, {result.reused} reused ({source})"
+    )
 
 
 SUCCESS_RATE_COLUMNS = (
@@ -150,6 +170,12 @@ def main() -> None:
         "--concurrency", type=int, default=3, help="squads in flight at once (default 3)"
     )
 
+    match = commands.add_parser(
+        "ingest-match", help="store one finished Sofascore Match as Raw Responses"
+    )
+    match.add_argument("event_id", type=int, help="Sofascore event ID, e.g. 16363874")
+    match.add_argument("--refresh", action="store_true", help=refresh_help)
+
     today = datetime.now(UTC).date()
     rates = commands.add_parser(
         "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
@@ -173,6 +199,8 @@ def main() -> None:
     settings = Settings()
     if args.command == "success-rates":
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
+    elif args.command == "ingest-match":
+        asyncio.run(ingest_match(settings, args.event_id, args.refresh))
     elif args.command == "ingest-squad":
         asyncio.run(ingest_squad(settings, args.club_id, args.season, args.refresh))
     else:
