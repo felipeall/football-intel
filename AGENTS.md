@@ -6,7 +6,6 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 
 - `GLOSSARY.md` — the domain glossary. Name code, tables and tests with its terms (Player, Source Record, Raw Response, Appearance, Action, Style Profile…).
 - `docs/adr/` — accepted decisions. Read the ADRs touching your area before changing it; a change that contradicts one needs a new ADR first.
-- `CONVENTIONS.md` — commit, branch and pull request format. Follow it for every commit.
 - `docs/agent-skills.md` — vendor skills enabled for this repo (Temporal, Pydantic, Langfuse, …). Load the matching skill before working with that technology; add new ones by its checklist.
 
 ## Rules the code does not show
@@ -23,15 +22,37 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - A new domain term goes into `GLOSSARY.md` in the same change.
 - Langfuse runs v4 in events-only mode: read traces through the v2 Observations API (`/api/public/v2/observations`); the legacy `/api/public/traces` endpoints answer with an error.
 
-## Pull requests
+## Critical review
 
-`CONVENTIONS.md` sets the branch and commit format; these are the GitHub mechanics around it.
+Two gates. Each ends in a written verdict, and the work moves on only after it.
 
-- Open one pull request at a time, branched from `main`, and start dependent work once it has merged.
+1. **Before implementing an issue, or accepting a new ADR: pre-mortem.** Assume the design shipped and failed, and find why. Check every assumption the issue and its ADRs rest on against what the code, live runs and other ADRs now show, and look for a smaller design that meets the same acceptance criteria. Post the pre-mortem as a comment on the issue (on the pull request for a new ADR): each finding with its evidence, then a verdict — *proceed*, *proceed with changes* (listed), or *needs a new ADR*. On *needs a new ADR*, stop and ask the user.
+2. **Before asking to merge a pull request: review the full diff** against the issue's acceptance criteria and the ADRs — correctness, outcomes the tests leave unpinned, docs and glossary drift. Fix each finding, or list it under **Open questions** in the pull request body. The gate is done when every finding is fixed or listed.
+
+## Commits
+
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/): `<type>(<scope>): <description>`.
+
+- **description**: imperative, lowercase, no trailing period, ≤ 72 characters (`add sofascore lineups activity`).
+- **body**: explains *why* when the subject does not; wrapped at 72 characters.
+- **footers**: `Refs: ADR-0006`, `BREAKING CHANGE: <what changed and how to migrate>`. Breaking changes also take `!` after the type or scope.
+- **types**: `feat`, `fix`, `docs` (README, ADRs, `GLOSSARY.md`), `refactor`, `perf`, `test` (tests and evals), `build` (dependencies, packaging, Docker images), `ci`, `chore` (touches no source or test code), `revert`.
+- **scopes**: `sources`, `transfermarkt`, `sofascore`, `understat`, `workflows`, `identity`, `dbt`, `profiles`, `agent`, `mcp`, `evals`, `web`, `infra`, `skills`. Omit the scope when a change spans several areas.
+
+## Decisions
+
+- Every architectural decision gets an ADR in `docs/adr/NNNN-short-title.md` and a line in `docs/adr/README.md`.
+- To supersede a decision, write a new ADR and set the old one's status to `Superseded by ADR-NNNN`.
+
+## Branches and pull requests
+
+- `main` is always releasable. One branch per change, named `<type>/<short-description>` (`feat/sofascore-heatmaps`), branched from `main`.
+- Pull request titles follow the commit format; squash-merge, so the title becomes the commit on `main`.
+- Open one pull request at a time, and start dependent work once it has merged.
 - When a pull request must build on an unmerged one, retarget it to `main` (`gh pr edit <n> --base main`) before merging its base. Squash-merging with `--delete-branch` closes every pull request still based on the deleted branch, and GitHub refuses to reopen one whose branch was force-pushed since.
-- Read CI from the run on the pull request's current head commit (`gh run list --branch <branch>`); a rebase or force-push starts a new run.
+- CI (`.github/workflows/ci.yml`) runs `ruff`, `pyright`, `pytest`, `import-linter` and `gitleaks` on every pull request and push to `main`. Merge only with all of them green, read from the run on the pull request's current head commit (`gh run list --branch <branch>`); a rebase or force-push starts a new run.
+- The repository is private on a free plan: branch protection and rulesets answer 403, so GitHub enforces no required checks (#1).
 - Write `Closes #N` only in pull request bodies: in a commit pushed straight to `main` it closes the issue on push, before its remaining criteria are met. After `gh issue reopen`, confirm the state with `gh issue view`.
-- The repository is private on a free plan: branch protection and rulesets answer 403, so `main` has no required checks yet (#1).
 
 ## Progress
 

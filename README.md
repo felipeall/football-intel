@@ -128,7 +128,7 @@ uv run lint-imports        # provider SDKs only inside agent/providers/<provider
 
 - [`GLOSSARY.md`](GLOSSARY.md) — domain glossary
 - [`docs/adr/`](docs/adr/) — architecture decision records
-- [`CONVENTIONS.md`](CONVENTIONS.md) — commits, branches, pull requests
+- [`AGENTS.md`](AGENTS.md) — rules for coding agents: commits, branches, pull requests, critical review
 - [`docs/agent-skills.md`](docs/agent-skills.md) — official agent skills enabled for coding agents
 
 ## Data disclaimer
