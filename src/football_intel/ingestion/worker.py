@@ -9,11 +9,14 @@ from temporalio.worker import Worker
 from football_intel.config import Settings
 from football_intel.ingestion.activities import TransfermarktActivities
 from football_intel.ingestion.workflows import SquadIngestWorkflow
+from football_intel.sources.interface import SourceInterface
+from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
 
 
 async def run_worker(settings: Settings) -> None:
     client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
-    activities = TransfermarktActivities(settings.database_url)
+    transfermarkt = SourceInterface(SOURCE, settings.transfermarkt, is_failure=is_upstream_failure)
+    activities = TransfermarktActivities(settings.database_url, transfermarkt)
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,

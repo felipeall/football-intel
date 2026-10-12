@@ -8,6 +8,17 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from football_intel.ingestion.activities import TransfermarktActivities
     from football_intel.ingestion.models import SquadIngestInput, SquadIngestResult
+    from football_intel.sources.transfermarkt import NON_RETRYABLE_ERRORS
+
+# Polite backoff: 10s, 20s, 40s, 80s between the five attempts. A failed attempt is retried
+# whole; Raw Responses it stored stay, as a record of what the source answered.
+TRANSFERMARKT_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=10),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(minutes=5),
+    maximum_attempts=5,
+    non_retryable_error_types=list(NON_RETRYABLE_ERRORS),
+)
 
 
 @workflow.defn
@@ -20,5 +31,5 @@ class SquadIngestWorkflow:
             TransfermarktActivities.ingest_club_squad,
             input,
             start_to_close_timeout=timedelta(minutes=5),
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=TRANSFERMARKT_RETRY_POLICY,
         )
