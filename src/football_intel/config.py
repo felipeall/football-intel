@@ -2,11 +2,13 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from football_intel.sources.interface import SourcePolicy
+
 
 class Settings(BaseSettings):
     """Connection settings. Defaults suit the host side of the compose stack."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_nested_delimiter="__")
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
@@ -18,6 +20,9 @@ class Settings(BaseSettings):
     temporal_port: int = 7233
     temporal_namespace: str = "default"
     temporal_task_queue: str = "ingestion"
+
+    # One policy per source, e.g. TRANSFERMARKT__REQUESTS_PER_SECOND=0.5.
+    transfermarkt: SourcePolicy = SourcePolicy()
 
     @property
     def database_url(self) -> str:
