@@ -12,6 +12,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 
 import httpx
 from pydantic import BaseModel, Field, SecretStr
@@ -23,11 +24,13 @@ Sleep = Callable[[float], Awaitable[None]]
 
 
 class SourcePolicy(BaseModel):
-    """Per-source settings: rate limit, circuit breaker and an optional proxy."""
+    """Per-source settings: rate limit, circuit breaker, Raw Response freshness and a proxy."""
 
     requests_per_second: float = Field(default=1.0, gt=0)
     breaker_failures: int = Field(default=5, ge=1)
     breaker_cooldown_seconds: float = Field(default=60.0, gt=0)
+    # A stored Raw Response younger than this answers its request instead of the source; 0 = off.
+    freshness_hours: float = Field(default=24.0, ge=0)
     # May carry credentials: a SecretStr never shows them in reprs or logs.
     proxy: SecretStr | None = None
 
@@ -181,6 +184,10 @@ class SourceInterface:
         self.breaker = CircuitBreaker(
             source, policy.breaker_failures, policy.breaker_cooldown_seconds, clock=clock
         )
+
+    @property
+    def freshness(self) -> timedelta:
+        return timedelta(hours=self._policy.freshness_hours)
 
     def transport(self) -> httpx.AsyncBaseTransport:
         """A transport for one client's lifetime; closing it closes only its own backend."""

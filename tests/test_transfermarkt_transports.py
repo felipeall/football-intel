@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -76,3 +77,38 @@ async def test_stored_and_logged_urls_contain_no_credentials(
     for secret in ("user", "s3cret", "t0ken"):
         assert secret not in stored_url
         assert secret not in caplog.text
+
+
+async def test_stored_failures_are_fetched_again_inside_the_freshness_window(
+    connection: AsyncConnection[Any],
+) -> None:
+    statuses = iter([503, 200])
+    backend = httpx.MockTransport(lambda request: httpx.Response(next(statuses), json={}))
+    transport = RecordingTransport(
+        backend, RawResponseStore(connection), freshness=timedelta(hours=1)
+    )
+    request = httpx.Request("GET", "https://example.com/club/1")
+
+    first = await transport.handle_async_request(request)
+    second = await transport.handle_async_request(request)
+    third = await transport.handle_async_request(request)
+
+    assert [first.status_code, second.status_code, third.status_code] == [503, 200, 200]
+    assert (transport.recorded, transport.reused) == (2, 1)
+
+
+async def test_cache_hits_are_logged(
+    connection: AsyncConnection[Any], caplog: pytest.LogCaptureFixture
+) -> None:
+    store = RawResponseStore(connection)
+    stub = TransfermarktStub()
+    await fetch_squad(RecordingTransport(stub.transport(), store), CLUB_ID, SEASON_ID)
+
+    with caplog.at_level(logging.INFO):
+        await fetch_squad(
+            RecordingTransport(stub.transport(), store, freshness=timedelta(hours=1)),
+            CLUB_ID,
+            SEASON_ID,
+        )
+
+    assert "Reused Raw Response GET" in caplog.text

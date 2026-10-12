@@ -11,7 +11,7 @@ from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
 from football_intel.ingestion.activities import TransfermarktActivities
-from football_intel.ingestion.models import SquadIngestInput
+from football_intel.ingestion.models import SquadIngestInput, SquadIngestResult
 from football_intel.ingestion.workflows import TRANSFERMARKT_RETRY_POLICY, SquadIngestWorkflow
 from football_intel.sources.interface import SourceInterface, SourcePolicy
 from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
@@ -97,7 +97,9 @@ async def time_skipping() -> AsyncIterator[WorkflowEnvironment]:
         yield env
 
 
-async def _run(env: WorkflowEnvironment, database_url: str, stub: TransfermarktStub) -> Any:
+async def _run(
+    env: WorkflowEnvironment, database_url: str, stub: TransfermarktStub, refresh: bool = False
+) -> SquadIngestResult:
     activities = TransfermarktActivities(database_url, _source(stub.transport))
     task_queue = f"test-{uuid.uuid4()}"
     async with Worker(
@@ -108,7 +110,7 @@ async def _run(env: WorkflowEnvironment, database_url: str, stub: TransfermarktS
     ):
         return await env.client.execute_workflow(
             SquadIngestWorkflow.run,
-            SquadIngestInput(club_id=CLUB_ID, season_id=SEASON_ID),
+            SquadIngestInput(club_id=CLUB_ID, season_id=SEASON_ID, refresh=refresh),
             id=f"squad-{uuid.uuid4()}",
             task_queue=task_queue,
         )
@@ -149,3 +151,59 @@ async def test_not_found_is_not_retried(
     assert isinstance(activity_error.cause, ApplicationError)
     assert activity_error.cause.type == "NotFound"
     assert stub.squad_requests == 1
+
+
+async def _stored(connection: AsyncConnection[Any]) -> int:
+    cursor = await connection.execute("SELECT count(*) FROM raw.raw_responses")
+    (count,) = await cursor.fetchone() or (0,)
+    return count
+
+
+async def test_second_run_inside_the_freshness_window_reuses_raw_responses(
+    temporal: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    stub = TransfermarktStub()
+    first = await _run(temporal, database_url, stub)
+    fetched = len(stub.requests)
+
+    second = await _run(temporal, database_url, stub)
+
+    assert len(stub.requests) == fetched  # No request reached the source.
+    assert not first.cache_hit
+    assert (first.raw_responses, first.reused) == (fetched, 0)
+    assert second.cache_hit
+    assert (second.raw_responses, second.reused) == (0, fetched)
+    assert second.players == first.players == len(PLAYER_IDS)
+    assert await _stored(connection) == fetched
+
+
+async def test_run_after_the_freshness_window_fetches_again_and_keeps_old_raw_responses(
+    temporal: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    stub = TransfermarktStub()
+    await _run(temporal, database_url, stub)
+    fetched = len(stub.requests)
+    await connection.execute(
+        "UPDATE raw.raw_responses SET captured_at = captured_at - interval '25 hours'"
+    )
+
+    result = await _run(temporal, database_url, stub)
+
+    assert len(stub.requests) == 2 * fetched
+    assert (result.raw_responses, result.reused) == (fetched, 0)
+    assert await _stored(connection) == 2 * fetched
+
+
+async def test_refresh_skips_fresh_raw_responses(
+    temporal: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    stub = TransfermarktStub()
+    await _run(temporal, database_url, stub)
+    fetched = len(stub.requests)
+
+    result = await _run(temporal, database_url, stub, refresh=True)
+
+    assert len(stub.requests) == 2 * fetched
+    assert not result.cache_hit
+    assert result.reused == 0
+    assert await _stored(connection) == 2 * fetched

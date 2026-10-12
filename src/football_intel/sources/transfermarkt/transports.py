@@ -1,16 +1,17 @@
 """`httpx` transports the `transfermarkt-api` SDK sends every upstream request through (ADR 28).
 
-`RecordingTransport` stores each response as a Raw Response before the SDK sees it;
-`ReplayTransport` answers from stored Raw Responses and never touches the network.
+`RecordingTransport` stores each response as a Raw Response before the SDK sees it, and
+answers from a fresh stored one instead when it can; `ReplayTransport` answers from stored
+Raw Responses and never touches the network.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from football_intel.raw_responses import RawResponse, RawResponseStore
-from football_intel.sources.transfermarkt import SOURCE
+from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
 from football_intel.sources.urls import redact_url
 
 logger = logging.getLogger(__name__)
@@ -27,14 +28,33 @@ class RawResponseMissingError(Exception):
 
 
 class RecordingTransport(httpx.AsyncBaseTransport):
-    """Forward to `backend`, store the response as a Raw Response, then return it."""
+    """Forward to `backend`, store the response as a Raw Response, then return it.
 
-    def __init__(self, backend: httpx.AsyncBaseTransport, store: RawResponseStore) -> None:
+    With a `freshness` window, a stored Raw Response captured within it answers the request
+    and `backend` is not called (ADR 4: parse again without scraping again). Stored failures
+    never answer: the source is asked again.
+    """
+
+    def __init__(
+        self,
+        backend: httpx.AsyncBaseTransport,
+        store: RawResponseStore,
+        freshness: timedelta | None = None,
+    ) -> None:
         self._backend = backend
         self._store = store
+        self._freshness = freshness
         self.recorded = 0
+        self.reused = 0
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        cached = await self._fresh(request)
+        if cached is not None:
+            self.reused += 1
+            logger.info(
+                "Reused Raw Response %s %s from %s", cached.method, cached.url, cached.captured_at
+            )
+            return _to_response(cached)
         response = await self._backend.handle_async_request(request)
         try:
             body = await response.aread()
@@ -60,6 +80,15 @@ class RecordingTransport(httpx.AsyncBaseTransport):
 
     async def aclose(self) -> None:
         await self._backend.aclose()
+
+    async def _fresh(self, request: httpx.Request) -> RawResponse | None:
+        if not self._freshness:
+            return None
+        since = datetime.now(UTC) - self._freshness
+        raw = await self._store.latest(SOURCE, request.method, redact_url(request.url), since)
+        if raw is None or is_upstream_failure(_to_response(raw)):
+            return None
+        return raw
 
 
 class ReplayTransport(httpx.AsyncBaseTransport):
