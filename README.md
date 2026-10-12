@@ -36,7 +36,7 @@ ADR numbers refer to [`docs/adr/`](docs/adr/).
 |---|---|---|---|---|
 | Language & tooling | Python 3.13, `uv`, `ruff`, `pyright`, `pytest`, `import-linter`, `gitleaks` | local + CI | PoC | 15, 24 |
 | Orchestration | Temporal: Schedules, post-match workflows, durable timers, signals | local | PoC | 5, 6 |
-| Source: Transfermarkt | [`transfermarkt-api`](https://github.com/felipeall/transfermarkt-api) over HTTP | local | PoC | 2, 3 |
+| Source: Transfermarkt | [`transfermarkt-api`](https://github.com/felipeall/transfermarkt-api) SDK, in-process | local | PoC | 2, 3, 28 |
 | Source: Sofascore | `curl_cffi` browser impersonation, Playwright fallback | local (residential IP) | PoC | 3, 14 |
 | Source: Understat | HTTP | local | PoC | 3 |
 | Ingestion resilience | Per-source rate limits, retries with backoff, circuit breaker, raw response cache | local | PoC | 4 |
@@ -86,6 +86,15 @@ docker compose up --wait   # Temporal, Postgres 17 + pgvector, Langfuse
 - Postgres on `localhost:5432`; data lives in the `postgres-data` volume and survives `docker compose down`. `docker compose down -v` deletes it.
 - The Temporal dev server keeps its state in memory: workflow history is lost on restart.
 - Langfuse UI at <http://localhost:3000>. The first start creates the `football-intel` organisation, project and API keys, and a user from the `LANGFUSE_INIT_USER_*` variables. Check tracing with `uv run --env-file .env scripts/langfuse_smoke.py`.
+- A `migrate` service applies the database migrations ([ADR 29](docs/adr/0029-migrations-alembic.md)); the `worker` service then runs the ingestion workflows.
+
+Store one club's squad for one season as Raw Responses (club `985` is Manchester United on Transfermarkt):
+
+```sh
+uv run football-intel ingest-squad 985 --season 2025
+```
+
+The run shows in the Temporal UI as `squad-985-2025`. Every upstream response lands in `raw.raw_responses`, untouched, before anything parses it. Scraped data stays in the database or under `data/`, never in this repository (see the [data disclaimer](#data-disclaimer)).
 
 ## Development
 
@@ -93,7 +102,7 @@ Requires [`uv`](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync                    # Python 3.13 and dev tools
-uv run pytest              # tests
+uv run pytest              # tests; database tests need the compose Postgres
 uv run ruff check && uv run ruff format --check
 uv run pyright
 uv run lint-imports        # provider SDKs only inside agent/providers/<provider>/ (ADR 24)

@@ -1,0 +1,46 @@
+import os
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
+
+import psycopg
+import pytest
+from alembic import command
+from alembic.config import Config
+from psycopg import AsyncConnection, sql
+
+from football_intel.config import Settings
+
+
+@pytest.fixture(scope="session")
+def database_url() -> Iterator[str]:
+    """A fresh test database next to the application database, migrated to head.
+
+    Skipped when Postgres is unreachable, except in CI, where it must be there.
+    """
+    settings = Settings()
+    test_db = f"{settings.postgres_db}_test"
+    try:
+        admin = psycopg.connect(settings.database_url, autocommit=True, connect_timeout=3)
+    except psycopg.OperationalError as error:
+        if os.environ.get("CI"):
+            raise
+        pytest.skip(f"Postgres unreachable ({error}); start it with docker compose up --wait")
+    with admin:
+        name = sql.Identifier(test_db)
+        admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(name))
+        admin.execute(sql.SQL("CREATE DATABASE {}").format(name))
+    url = settings.model_copy(update={"postgres_db": test_db}).database_url
+
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", url)
+    config.attributes["configure_logger"] = False
+    command.upgrade(config, "head")
+    yield url
+
+
+@pytest.fixture
+async def connection(database_url: str) -> AsyncIterator[AsyncConnection[Any]]:
+    """An autocommit connection to an empty `raw.raw_responses`."""
+    async with await AsyncConnection.connect(database_url, autocommit=True) as conn:
+        await conn.execute("TRUNCATE raw.raw_responses")
+        yield conn
