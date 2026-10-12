@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -21,13 +21,6 @@ from tests.transfermarkt_stub import CLUB_ID, PLAYER_IDS, SEASON_ID, Transfermar
 def _source(backend: Callable[[], httpx.AsyncBaseTransport]) -> SourceInterface:
     policy = SourcePolicy(requests_per_second=1000, breaker_failures=100)
     return SourceInterface(SOURCE, policy, is_failure=is_upstream_failure, backend=backend)
-
-
-@pytest.fixture(scope="session")
-async def temporal() -> AsyncIterator[WorkflowEnvironment]:
-    # The SDK's signature has a partially unknown parameter type.
-    async with await WorkflowEnvironment.start_local() as env:  # pyright: ignore[reportUnknownMemberType]
-        yield env
 
 
 async def test_squad_workflow_stores_raw_responses_end_to_end(
@@ -88,13 +81,6 @@ def _not_found(request: httpx.Request) -> httpx.Response:
 
 def _timeout(request: httpx.Request) -> httpx.Response:
     raise httpx.ReadTimeout("timed out", request=request)
-
-
-@pytest.fixture(scope="session")
-async def time_skipping() -> AsyncIterator[WorkflowEnvironment]:
-    # Skips the retry policy's backoff instead of waiting it out.
-    async with await WorkflowEnvironment.start_time_skipping() as env:  # pyright: ignore[reportUnknownMemberType]
-        yield env
 
 
 async def _run(

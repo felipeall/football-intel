@@ -94,7 +94,15 @@ Store one club's squad for one season as Raw Responses (club `985` is Manchester
 uv run football-intel ingest-squad 985 --season 2025
 ```
 
-The run shows in the Temporal UI as `squad-985-2025`. Every upstream response lands in `raw.raw_responses`, untouched, before anything parses it. Scraped data stays in the database or under `data/`, never in this repository (see the [data disclaimer](#data-disclaimer)).
+Store every Premier League club's squad for a season (`--competition` takes another Transfermarkt competition ID):
+
+```sh
+uv run football-intel ingest-competition --season 2025
+```
+
+That is about 560 upstream requests, so at the default rate limit of one request per second it takes roughly ten minutes. Clubs run as child workflows, three at a time (`--concurrency`); a club that fails is listed at the end without stopping the others. Within the freshness window (24 hours by default) a re-run reuses stored Raw Responses instead of fetching again; `--refresh` fetches anyway. Rate limit, circuit breaker, freshness and proxy are set per source in `.env` (see `.env.example`).
+
+The runs show in the Temporal UI as `squad-985-2025` and `competition-squads-GB1-2025`. Every upstream response lands in `raw.raw_responses`, untouched, before anything parses it. Scraped data stays in the database or under `data/`, never in this repository (see the [data disclaimer](#data-disclaimer)).
 
 ## Development
 

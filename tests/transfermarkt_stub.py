@@ -2,6 +2,9 @@
 
 Club 1 has three players. Player 103 has no transfer history, so upstream answers 404,
 which the SDK tolerates and the recording transport must still store.
+
+Competition TL1 has clubs 1, 3 and 4. Club 4 has the same squad as club 1; club 3 has no
+squad upstream (404), so ingesting it fails with `NotFound`.
 """
 
 import json
@@ -13,6 +16,10 @@ CLUB_ID = "1"
 SEASON_ID = "2025"
 PLAYER_IDS = ("101", "102", "103")
 PREVIOUS_CLUB_ID = "2"
+COMPETITION_ID = "TL1"
+COMPETITION_CLUB_IDS = ("1", "3", "4")
+SQUAD_CLUB_IDS = ("1", "4")
+FAILING_CLUB_ID = "3"
 
 
 def _player(player_id: str, name: str, position: str) -> dict[str, Any]:
@@ -75,7 +82,12 @@ class TransfermarktStub:
         self.requests.append(request)
         path = request.url.path
         ids = request.url.params.get_list("ids[]")
-        if path == f"/club/{CLUB_ID}/squad":
+        if path == f"/competition/{COMPETITION_ID}/club":
+            clubs = [int(i) for i in COMPETITION_CLUB_IDS]
+            return _ok({"seasonId": int(request.url.params["season"]), "clubIds": clubs})
+        if path == "/competitions":
+            return _ok([{"id": i, "name": "Test League"} for i in ids if i == COMPETITION_ID])
+        if path in {f"/club/{i}/squad" for i in SQUAD_CLUB_IDS}:
             members = [
                 {"playerId": int(i), "type": "current", "shirtNumber": n, "isCaptain": n == 1}
                 for n, i in enumerate(PLAYER_IDS, start=1)
