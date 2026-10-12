@@ -6,6 +6,7 @@ import httpx
 import pytest
 from psycopg import AsyncConnection
 
+from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources.recording import (
     RawResponseMissingError,
@@ -21,7 +22,9 @@ async def test_recording_stores_one_raw_response_per_upstream_request(
     connection: AsyncConnection[Any],
 ) -> None:
     stub = TransfermarktStub()
-    transport = recording_transport(stub.transport(), RawResponseStore(connection))
+    transport = recording_transport(
+        stub.transport(), RawResponseStore(connection), FetchAttemptStore(connection)
+    )
 
     squad = await fetch_squad(transport, CLUB_ID, SEASON_ID)
 
@@ -46,7 +49,9 @@ async def test_replay_reassembles_the_same_squad_without_network(
 ) -> None:
     store = RawResponseStore(connection)
     live = await fetch_squad(
-        recording_transport(TransfermarktStub().transport(), store), CLUB_ID, SEASON_ID
+        recording_transport(TransfermarktStub().transport(), store, FetchAttemptStore(connection)),
+        CLUB_ID,
+        SEASON_ID,
     )
 
     # The replay transport has no backend at all: it can only answer from the store.
@@ -66,7 +71,9 @@ async def test_stored_and_logged_urls_contain_no_credentials(
     connection: AsyncConnection[Any], caplog: pytest.LogCaptureFixture
 ) -> None:
     backend = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
-    transport = recording_transport(backend, RawResponseStore(connection))
+    transport = recording_transport(
+        backend, RawResponseStore(connection), FetchAttemptStore(connection)
+    )
     request = httpx.Request("GET", "https://user:s3cret@example.com/club/1?token=t0ken&season=2025")
 
     with caplog.at_level(logging.DEBUG):
@@ -86,7 +93,10 @@ async def test_stored_failures_are_fetched_again_inside_the_freshness_window(
     statuses = iter([503, 200])
     backend = httpx.MockTransport(lambda request: httpx.Response(next(statuses), json={}))
     transport = recording_transport(
-        backend, RawResponseStore(connection), freshness=timedelta(hours=1)
+        backend,
+        RawResponseStore(connection),
+        FetchAttemptStore(connection),
+        freshness=timedelta(hours=1),
     )
     request = httpx.Request("GET", "https://example.com/club/1")
 
@@ -103,11 +113,12 @@ async def test_cache_hits_are_logged(
 ) -> None:
     store = RawResponseStore(connection)
     stub = TransfermarktStub()
-    await fetch_squad(recording_transport(stub.transport(), store), CLUB_ID, SEASON_ID)
+    attempts = FetchAttemptStore(connection)
+    await fetch_squad(recording_transport(stub.transport(), store, attempts), CLUB_ID, SEASON_ID)
 
     with caplog.at_level(logging.INFO):
         await fetch_squad(
-            recording_transport(stub.transport(), store, freshness=timedelta(hours=1)),
+            recording_transport(stub.transport(), store, attempts, freshness=timedelta(hours=1)),
             CLUB_ID,
             SEASON_ID,
         )
@@ -132,7 +143,12 @@ async def test_a_second_source_records_and_reuses_under_its_own_name_and_failure
 
     def transport() -> RecordingTransport:
         return RecordingTransport(
-            httpx.MockTransport(handle), store, "fake", is_teapot, freshness=timedelta(hours=1)
+            httpx.MockTransport(handle),
+            store,
+            FetchAttemptStore(connection),
+            "fake",
+            is_teapot,
+            freshness=timedelta(hours=1),
         )
 
     for url in statuses:
