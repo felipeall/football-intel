@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import httpx
 
+from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources.recording import RecordingTransport, ReplayTransport
 
@@ -29,12 +30,19 @@ def is_upstream_failure(response: httpx.Response) -> bool:
 def recording_transport(
     backend: httpx.AsyncBaseTransport,
     store: RawResponseStore,
+    attempts: FetchAttemptStore,
     freshness: timedelta | None = None,
 ) -> RecordingTransport:
     """A transport the SDK fetches through, storing every response as a Transfermarkt Raw
-    Response."""
+    Response and every request as a Fetch Attempt."""
     return RecordingTransport(
-        backend, store, SOURCE, is_upstream_failure, freshness, captured_at_extension=FETCHED_AT
+        backend,
+        store,
+        attempts,
+        SOURCE,
+        is_upstream_failure,
+        freshness,
+        captured_at_extension=FETCHED_AT,
     )
 
 

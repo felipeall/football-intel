@@ -8,6 +8,7 @@ from psycopg import AsyncConnection
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.ingestion.models import (
     CompetitionClubsInput,
     CompetitionClubsResult,
@@ -83,7 +84,10 @@ class TransfermarktActivities:
             freshness = None if refresh else self._source.freshness
             try:
                 yield recording_transport(
-                    self._source.transport(), RawResponseStore(conn), freshness
+                    self._source.transport(),
+                    RawResponseStore(conn),
+                    FetchAttemptStore(conn),
+                    freshness,
                 )
             except CircuitOpenError as error:
                 raise _retry_after_cooldown(error) from error

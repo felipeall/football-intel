@@ -4,6 +4,9 @@
 answers from a fresh stored one instead when it can; `ReplayTransport` answers from stored
 Raw Responses and never touches the network. Both are source-neutral: each source passes its
 name, and the recording transport its failure test.
+
+The recording transport wraps the source interface's transport, so it sees every upstream
+request the interface handles, and records exactly one Fetch Attempt for each.
 """
 
 import logging
@@ -12,7 +15,9 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
+from football_intel.fetch_attempts import FetchAttempt, FetchAttemptStore, FetchOutcome
 from football_intel.raw_responses import RawResponse, RawResponseStore
+from football_intel.sources.interface import CircuitOpenError
 from football_intel.sources.urls import redact_url
 
 logger = logging.getLogger(__name__)
@@ -35,12 +40,15 @@ class RecordingTransport(httpx.AsyncBaseTransport):
     With a `freshness` window, a stored Raw Response captured within it answers the request
     and `backend` is not called (ADR 4: parse again without scraping again). Stored responses
     that `is_failure` rejects never answer: the source is asked again.
+
+    Every request, answered or not, is recorded as a Fetch Attempt in `attempts`.
     """
 
     def __init__(
         self,
         backend: httpx.AsyncBaseTransport,
         store: RawResponseStore,
+        attempts: FetchAttemptStore,
         source: str,
         is_failure: Callable[[httpx.Response], bool],
         freshness: timedelta | None = None,
@@ -48,6 +56,7 @@ class RecordingTransport(httpx.AsyncBaseTransport):
     ) -> None:
         self._backend = backend
         self._store = store
+        self._attempts = attempts
         self._source = source
         self._is_failure = is_failure
         self._freshness = freshness
@@ -56,22 +65,30 @@ class RecordingTransport(httpx.AsyncBaseTransport):
         self.reused = 0
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        cached = await self._fresh(request)
+        attempted_at = datetime.now(UTC)
+        url = redact_url(request.url)
+        cached = await self._fresh(request.method, url)
         if cached is not None:
+            await self._attempt(request, url, FetchOutcome.REUSED, cached.status_code, attempted_at)
             self.reused += 1
             logger.info(
                 "Reused Raw Response %s %s from %s", cached.method, cached.url, cached.captured_at
             )
             return _to_response(cached, self._captured_at_extension)
-        response = await self._backend.handle_async_request(request)
         try:
-            body = await response.aread()
-        finally:
-            await response.aclose()
+            response = await self._backend.handle_async_request(request)
+            try:
+                body = await response.aread()
+            finally:
+                await response.aclose()
+        except Exception as error:
+            await self._attempt(request, url, _outcome_of(error), None, attempted_at)
+            raise
+        await self._attempt(request, url, FetchOutcome.ANSWERED, response.status_code, attempted_at)
         raw = RawResponse(
             source=self._source,
             method=request.method,
-            url=redact_url(request.url),
+            url=url,
             status_code=response.status_code,
             headers=tuple(
                 (key, value)
@@ -89,14 +106,26 @@ class RecordingTransport(httpx.AsyncBaseTransport):
     async def aclose(self) -> None:
         await self._backend.aclose()
 
-    async def _fresh(self, request: httpx.Request) -> RawResponse | None:
+    async def _fresh(self, method: str, url: str) -> RawResponse | None:
         if not self._freshness:
             return None
         since = datetime.now(UTC) - self._freshness
-        raw = await self._store.latest(self._source, request.method, redact_url(request.url), since)
+        raw = await self._store.latest(self._source, method, url, since)
         if raw is None or self._is_failure(_to_response(raw, self._captured_at_extension)):
             return None
         return raw
+
+    async def _attempt(
+        self,
+        request: httpx.Request,
+        url: str,
+        outcome: FetchOutcome,
+        status_code: int | None,
+        attempted_at: datetime,
+    ) -> None:
+        await self._attempts.save(
+            FetchAttempt(self._source, request.method, url, outcome, status_code, attempted_at)
+        )
 
 
 class ReplayTransport(httpx.AsyncBaseTransport):
@@ -115,6 +144,14 @@ class ReplayTransport(httpx.AsyncBaseTransport):
         if raw is None:
             raise RawResponseMissingError(f"No Raw Response for {request.method} {url}")
         return _to_response(raw, self._captured_at_extension)
+
+
+def _outcome_of(error: Exception) -> FetchOutcome:
+    if isinstance(error, CircuitOpenError):
+        return FetchOutcome.CIRCUIT_OPEN
+    if isinstance(error, httpx.TimeoutException):
+        return FetchOutcome.TIMEOUT
+    return FetchOutcome.TRANSPORT_ERROR
 
 
 def _to_response(raw: RawResponse, captured_at_extension: str) -> httpx.Response:

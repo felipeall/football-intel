@@ -1,11 +1,15 @@
-"""Command line: start ingestion workflows."""
+"""Command line: start ingestion workflows and report per-source success rates."""
 
 import argparse
 import asyncio
+from collections.abc import Sequence
+from datetime import UTC, date, datetime, timedelta
 
+from psycopg import AsyncConnection
 from temporalio.client import Client
 
 from football_intel.config import Settings
+from football_intel.fetch_attempts import FetchAttemptStore, SuccessRate
 from football_intel.ingestion.models import (
     CompetitionSquadsInput,
     SquadIngestInput,
@@ -64,6 +68,64 @@ async def ingest_competition(
         print(f"Failed clubs: {', '.join(result.failed_club_ids)}")
 
 
+SUCCESS_RATE_COLUMNS = (
+    "source",
+    "day",
+    "attempts",
+    "success",
+    "not_found",
+    "blocked",
+    "other_4xx",
+    "server_error",
+    "timeout_transport",
+    "circuit_open",
+    "reused",
+    "success_rate",
+)
+
+
+def format_success_rates(rates: Sequence[SuccessRate]) -> str:
+    """A plain-text table, one row per source and day."""
+    if not rates:
+        return "No Fetch Attempts in this range."
+    rows = [SUCCESS_RATE_COLUMNS] + [
+        (
+            rate.source,
+            rate.day.isoformat(),
+            *(
+                str(count)
+                for count in (
+                    rate.attempts,
+                    rate.success,
+                    rate.not_found,
+                    rate.blocked,
+                    rate.other_client_error,
+                    rate.server_error,
+                    rate.timeout_or_transport_error,
+                    rate.circuit_open,
+                    rate.reused,
+                )
+            ),
+            "-" if rate.success_rate is None else f"{rate.success_rate:.1%}",
+        )
+        for rate in rates
+    ]
+    widths = [max(len(row[i]) for row in rows) for i in range(len(SUCCESS_RATE_COLUMNS))]
+    return "\n".join(
+        "  ".join(
+            cell.ljust(width) if i < 2 else cell.rjust(width)
+            for i, (cell, width) in enumerate(zip(row, widths, strict=True))
+        ).rstrip()
+        for row in rows
+    )
+
+
+async def success_rates(settings: Settings, first_day: date, last_day: date) -> None:
+    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+        rates = await FetchAttemptStore(conn).success_rates(first_day, last_day)
+    print(format_success_rates(rates))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="football-intel")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -88,9 +150,30 @@ def main() -> None:
         "--concurrency", type=int, default=3, help="squads in flight at once (default 3)"
     )
 
+    today = datetime.now(UTC).date()
+    rates = commands.add_parser(
+        "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
+    )
+    rates.add_argument(
+        "--from",
+        dest="first_day",
+        type=date.fromisoformat,
+        default=today - timedelta(days=6),
+        help="first day, YYYY-MM-DD (default six days ago)",
+    )
+    rates.add_argument(
+        "--to",
+        dest="last_day",
+        type=date.fromisoformat,
+        default=today,
+        help="last day, included, YYYY-MM-DD (default today)",
+    )
+
     args = parser.parse_args()
     settings = Settings()
-    if args.command == "ingest-squad":
+    if args.command == "success-rates":
+        asyncio.run(success_rates(settings, args.first_day, args.last_day))
+    elif args.command == "ingest-squad":
         asyncio.run(ingest_squad(settings, args.club_id, args.season, args.refresh))
     else:
         asyncio.run(

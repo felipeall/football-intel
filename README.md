@@ -104,6 +104,14 @@ That is about 560 upstream requests, so at the default rate limit of one request
 
 The runs show in the Temporal UI as `squad-985-2025` and `competition-squads-GB1-2025`. Every upstream response lands in `raw.raw_responses`, untouched, before anything parses it. Scraped data stays in the database or under `data/`, never in this repository (see the [data disclaimer](#data-disclaimer)).
 
+Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, including timeouts, transport errors, circuit-breaker rejections and reuses of a fresh Raw Response. Print each source's outcomes and success rate per day (UTC) for the last seven days, or for a range with `--from` and `--to`:
+
+```sh
+uv run football-intel success-rates --from 2026-10-01 --to 2026-10-13
+```
+
+The success rate counts 2xx/3xx answers over the attempts that reached the source; circuit-breaker rejections and reuses never did, so they are counted but left out of the rate. The same numbers are in the `raw.source_success_rates` view.
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
