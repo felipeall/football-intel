@@ -24,23 +24,28 @@ class TransfermarktActivities:
     async def ingest_club_squad(self, input: SquadIngestInput) -> SquadIngestResult:
         """Fetch a squad and store every upstream response as a Raw Response."""
         async with await AsyncConnection.connect(self._database_url, autocommit=True) as conn:
-            transport = RecordingTransport(self._source.transport(), RawResponseStore(conn))
+            freshness = None if input.refresh else self._source.freshness
+            transport = RecordingTransport(
+                self._source.transport(), RawResponseStore(conn), freshness
+            )
             try:
                 squad = await fetch_squad(transport, input.club_id, input.season_id)
             except CircuitOpenError as error:
                 raise _retry_after_cooldown(error) from error
         activity.logger.info(
-            "Club %s season %s: %d players from %d Raw Responses",
+            "Club %s season %s: %d players; %d Raw Responses fetched, %d reused",
             input.club_id,
             input.season_id,
             len(squad.players),
             transport.recorded,
+            transport.reused,
         )
         return SquadIngestResult(
             club_id=input.club_id,
             season_id=input.season_id,
             players=len(squad.players),
             raw_responses=transport.recorded,
+            reused=transport.reused,
         )
 
 

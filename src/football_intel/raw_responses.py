@@ -52,17 +52,23 @@ class RawResponseStore:
             ),
         )
 
-    async def latest(self, source: str, method: str, url: str) -> RawResponse | None:
-        """The most recent Raw Response for a request, or None if none is stored."""
+    async def latest(
+        self, source: str, method: str, url: str, captured_since: datetime | None = None
+    ) -> RawResponse | None:
+        """The most recent Raw Response for a request, or None if none is stored.
+
+        With `captured_since`, only a Raw Response captured at or after that time counts.
+        """
         cursor = await self._connection.execute(
             """
             SELECT status_code, headers, body, captured_at
             FROM raw.raw_responses
             WHERE source = %s AND method = %s AND url = %s
+              AND (%s::timestamptz IS NULL OR captured_at >= %s)
             ORDER BY captured_at DESC, id DESC
             LIMIT 1
             """,
-            (source, method, url),
+            (source, method, url, captured_since, captured_since),
         )
         row = await cursor.fetchone()
         if row is None:

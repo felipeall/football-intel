@@ -8,6 +8,7 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 
 - **Source** — An external data provider the platform ingests from: Transfermarkt (via `transfermarkt-api`), Sofascore, Understat. Each source is implemented behind a common source interface.
 - **Raw Response** — The untouched payload returned by a source for one request, stored before any parsing so it can be reprocessed without re-scraping.
+- **Freshness Window** — How long a stored Raw Response answers its request instead of the source, set per source. Failure responses never answer; a forced refresh skips the window.
 - **Source Record** — A source's own representation of an entity (player, team, match), keyed by that source's ID.
 - **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source.
 - **Identity Resolution** — The process of linking Source Records to a Player: deterministic rules, then fuzzy scoring, then an LLM judge, then human review below a confidence threshold.
