@@ -70,25 +70,25 @@ async def test_every_request_produces_exactly_one_fetch_attempt(
         await send("/new")
 
     cursor = await connection.execute(
-        "SELECT source, url, outcome, status_code FROM raw.fetch_attempts ORDER BY id"
+        "SELECT source, url, outcome, status_code, failed FROM raw.fetch_attempts ORDER BY id"
     )
     rows = await cursor.fetchall()
-    assert [(outcome, status) for _, _, outcome, status in rows] == [
-        ("answered", 200),
-        ("answered", 404),
-        ("answered", 400),
-        ("answered", 403),
-        ("answered", 429),
-        ("answered", 503),
-        ("timeout", None),
-        ("transport_error", None),
-        ("answered", 503),
-        ("reused", 200),
-        ("circuit_open", None),
+    assert [(outcome, status, failed) for _, _, outcome, status, failed in rows] == [
+        ("answered", 200, False),
+        ("answered", 404, False),
+        ("answered", 400, False),
+        ("answered", 403, True),
+        ("answered", 429, True),
+        ("answered", 503, True),
+        ("timeout", None, None),
+        ("transport_error", None, None),
+        ("answered", 503, True),
+        ("reused", 200, False),
+        ("circuit_open", None, None),
     ]
-    assert {source for source, _, _, _ in rows} == {"fake"}
+    assert {row[0] for row in rows} == {"fake"}
     # URLs are redacted as for Raw Responses.
-    assert f"{BASE}/slow?token=REDACTED" in [url for _, url, _, _ in rows]
+    assert f"{BASE}/slow?token=REDACTED" in [row[1] for row in rows]
     assert "s3cret" not in str(rows)
 
     today = datetime.now(UTC).date()
@@ -105,8 +105,9 @@ async def test_every_request_produces_exactly_one_fetch_attempt(
             timeout_or_transport_error=2,
             circuit_open=1,
             reused=1,
-            # Nine attempts reached the source: all but the reuse and the circuit-open rejection.
-            success_rate=0.1111,
+            # The 200 and the 404 over the nine attempts that reached the source: all but the
+            # reuse and the circuit-open rejection.
+            success_rate=0.2222,
         )
     ]
 
@@ -118,7 +119,8 @@ async def test_success_rates_are_per_source_and_day_within_the_range(
 
     async def attempt(source: str, day: int, outcome: FetchOutcome, status: int | None) -> None:
         at = datetime(2026, 10, day, 23, 30, tzinfo=UTC)
-        await attempts.save(FetchAttempt(source, "GET", f"{BASE}/x", outcome, status, at))
+        failed = None if status is None else status >= 500
+        await attempts.save(FetchAttempt(source, "GET", f"{BASE}/x", outcome, status, failed, at))
 
     await attempt("fake", 1, FetchOutcome.ANSWERED, 200)
     await attempt("fake", 2, FetchOutcome.ANSWERED, 200)
@@ -133,6 +135,26 @@ async def test_success_rates_are_per_source_and_day_within_the_range(
         # Nothing reached the source: no rate rather than zero.
         ("other", date(2026, 10, 2), 1, None),
     ]
+
+
+async def test_answers_the_source_rejects_count_as_blocked_not_success(
+    connection: AsyncConnection[Any],
+) -> None:
+    responses = {
+        "/waf": httpx.Response(200, headers={"x-amzn-waf-action": "challenge"}, text="<html>"),
+        "/empty": httpx.Response(202),
+        "/ok": httpx.Response(200, json={}),
+    }
+    backend = httpx.MockTransport(lambda request: responses[request.url.path])
+    attempts = FetchAttemptStore(connection)
+    transport = recording_transport(backend, RawResponseStore(connection), attempts)
+
+    for path in responses:
+        await transport.handle_async_request(httpx.Request("GET", BASE + path))
+
+    today = datetime.now(UTC).date()
+    (rate,) = await attempts.success_rates(today, today)
+    assert (rate.success, rate.blocked, rate.success_rate) == (1, 2, 0.3333)
 
 
 async def test_a_transfermarkt_squad_records_one_fetch_attempt_per_upstream_request(

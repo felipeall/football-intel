@@ -110,7 +110,7 @@ Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, in
 uv run football-intel success-rates --from 2026-10-01 --to 2026-10-13
 ```
 
-The success rate counts 2xx/3xx answers over the attempts that reached the source; circuit-breaker rejections and reuses never did, so they are counted but left out of the rate. The same numbers are in the `raw.source_success_rates` view.
+The success rate shows breakage: successful answers and 404s (the source answered; the thing does not exist) over the attempts that reached the source. Circuit-breaker rejections and reuses never reached it, so they are counted but left out of the rate. An answer counts as blocked when it is a 403 or 429, or when the source's own failure test rejects it, such as Transfermarkt's WAF challenge served with a 200. The same numbers are in the `raw.source_success_rates` view.
 
 ## Development
 
