@@ -17,9 +17,8 @@ from football_intel.ingestion.activities import TransfermarktActivities
 from football_intel.ingestion.models import SquadIngestInput
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources.interface import CircuitOpenError, SourceInterface, SourcePolicy
-from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
+from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure, recording_transport
 from football_intel.sources.transfermarkt.squads import fetch_squad
-from football_intel.sources.transfermarkt.transports import RecordingTransport
 from tests.transfermarkt_stub import CLUB_ID, PLAYER_IDS, SEASON_ID, TransfermarktStub
 
 
@@ -234,7 +233,7 @@ async def test_requests_go_through_the_configured_proxy_without_leaking_credenti
 ) -> None:
     proxy_url, received = proxy
     policy = SourcePolicy(requests_per_second=1000, proxy=SecretStr(proxy_url))
-    transport = RecordingTransport(
+    transport = recording_transport(
         SourceInterface(SOURCE, policy).transport(), RawResponseStore(connection)
     )
 

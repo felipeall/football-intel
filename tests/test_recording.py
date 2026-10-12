@@ -7,12 +7,13 @@ import pytest
 from psycopg import AsyncConnection
 
 from football_intel.raw_responses import RawResponseStore
-from football_intel.sources.transfermarkt.squads import fetch_squad
-from football_intel.sources.transfermarkt.transports import (
+from football_intel.sources.recording import (
     RawResponseMissingError,
     RecordingTransport,
     ReplayTransport,
 )
+from football_intel.sources.transfermarkt import recording_transport, replay_transport
+from football_intel.sources.transfermarkt.squads import fetch_squad
 from tests.transfermarkt_stub import CLUB_ID, PLAYER_IDS, SEASON_ID, TransfermarktStub
 
 
@@ -20,7 +21,7 @@ async def test_recording_stores_one_raw_response_per_upstream_request(
     connection: AsyncConnection[Any],
 ) -> None:
     stub = TransfermarktStub()
-    transport = RecordingTransport(stub.transport(), RawResponseStore(connection))
+    transport = recording_transport(stub.transport(), RawResponseStore(connection))
 
     squad = await fetch_squad(transport, CLUB_ID, SEASON_ID)
 
@@ -45,11 +46,11 @@ async def test_replay_reassembles_the_same_squad_without_network(
 ) -> None:
     store = RawResponseStore(connection)
     live = await fetch_squad(
-        RecordingTransport(TransfermarktStub().transport(), store), CLUB_ID, SEASON_ID
+        recording_transport(TransfermarktStub().transport(), store), CLUB_ID, SEASON_ID
     )
 
-    # ReplayTransport has no backend at all: it can only answer from the store.
-    replayed = await fetch_squad(ReplayTransport(store), CLUB_ID, SEASON_ID)
+    # The replay transport has no backend at all: it can only answer from the store.
+    replayed = await fetch_squad(replay_transport(store), CLUB_ID, SEASON_ID)
 
     assert replayed == live
 
@@ -58,14 +59,14 @@ async def test_replay_of_an_unrecorded_request_is_an_error(
     connection: AsyncConnection[Any],
 ) -> None:
     with pytest.raises(RawResponseMissingError):
-        await fetch_squad(ReplayTransport(RawResponseStore(connection)), CLUB_ID, SEASON_ID)
+        await fetch_squad(replay_transport(RawResponseStore(connection)), CLUB_ID, SEASON_ID)
 
 
 async def test_stored_and_logged_urls_contain_no_credentials(
     connection: AsyncConnection[Any], caplog: pytest.LogCaptureFixture
 ) -> None:
     backend = httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}))
-    transport = RecordingTransport(backend, RawResponseStore(connection))
+    transport = recording_transport(backend, RawResponseStore(connection))
     request = httpx.Request("GET", "https://user:s3cret@example.com/club/1?token=t0ken&season=2025")
 
     with caplog.at_level(logging.DEBUG):
@@ -84,7 +85,7 @@ async def test_stored_failures_are_fetched_again_inside_the_freshness_window(
 ) -> None:
     statuses = iter([503, 200])
     backend = httpx.MockTransport(lambda request: httpx.Response(next(statuses), json={}))
-    transport = RecordingTransport(
+    transport = recording_transport(
         backend, RawResponseStore(connection), freshness=timedelta(hours=1)
     )
     request = httpx.Request("GET", "https://example.com/club/1")
@@ -102,13 +103,55 @@ async def test_cache_hits_are_logged(
 ) -> None:
     store = RawResponseStore(connection)
     stub = TransfermarktStub()
-    await fetch_squad(RecordingTransport(stub.transport(), store), CLUB_ID, SEASON_ID)
+    await fetch_squad(recording_transport(stub.transport(), store), CLUB_ID, SEASON_ID)
 
     with caplog.at_level(logging.INFO):
         await fetch_squad(
-            RecordingTransport(stub.transport(), store, freshness=timedelta(hours=1)),
+            recording_transport(stub.transport(), store, freshness=timedelta(hours=1)),
             CLUB_ID,
             SEASON_ID,
         )
 
     assert "Reused Raw Response GET" in caplog.text
+
+
+async def test_a_second_source_records_and_reuses_under_its_own_name_and_failure_test(
+    connection: AsyncConnection[Any],
+) -> None:
+    # A fake source whose failure test is unlike Transfermarkt's: a 418 is a failure, a 503 is not.
+    def is_teapot(response: httpx.Response) -> bool:
+        return response.status_code == 418
+
+    store = RawResponseStore(connection)
+    statuses = {"https://fake.example/teapot": 418, "https://fake.example/down": 503}
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(statuses[str(request.url)], json={})
+
+    def transport() -> RecordingTransport:
+        return RecordingTransport(
+            httpx.MockTransport(handle), store, "fake", is_teapot, freshness=timedelta(hours=1)
+        )
+
+    for url in statuses:
+        await transport().handle_async_request(httpx.Request("GET", url))
+    second = transport()
+    for url in statuses:
+        await second.handle_async_request(httpx.Request("GET", url))
+
+    cursor = await connection.execute("SELECT DISTINCT source FROM raw.raw_responses")
+    assert await cursor.fetchall() == [("fake",)]
+    # Its own failure test decides: the stored 418 is fetched again, the stored 503 answers.
+    assert calls == [*statuses, "https://fake.example/teapot"]
+    assert (second.recorded, second.reused) == (1, 1)
+    # Another source's replay never sees these Raw Responses.
+    with pytest.raises(RawResponseMissingError):
+        await replay_transport(store).handle_async_request(
+            httpx.Request("GET", "https://fake.example/down")
+        )
+    replayed = await ReplayTransport(store, "fake").handle_async_request(
+        httpx.Request("GET", "https://fake.example/down")
+    )
+    assert replayed.status_code == 503
