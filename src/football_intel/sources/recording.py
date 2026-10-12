@@ -69,7 +69,10 @@ class RecordingTransport(httpx.AsyncBaseTransport):
         url = redact_url(request.url)
         cached = await self._fresh(request.method, url)
         if cached is not None:
-            await self._attempt(request, url, FetchOutcome.REUSED, cached.status_code, attempted_at)
+            # Stored failures never answer, so a reuse is never a failure.
+            await self._attempt(
+                request, url, FetchOutcome.REUSED, cached.status_code, False, attempted_at
+            )
             self.reused += 1
             logger.info(
                 "Reused Raw Response %s %s from %s", cached.method, cached.url, cached.captured_at
@@ -82,9 +85,16 @@ class RecordingTransport(httpx.AsyncBaseTransport):
             finally:
                 await response.aclose()
         except Exception as error:
-            await self._attempt(request, url, _outcome_of(error), None, attempted_at)
+            await self._attempt(request, url, _outcome_of(error), None, None, attempted_at)
             raise
-        await self._attempt(request, url, FetchOutcome.ANSWERED, response.status_code, attempted_at)
+        await self._attempt(
+            request,
+            url,
+            FetchOutcome.ANSWERED,
+            response.status_code,
+            self._is_failure(response),
+            attempted_at,
+        )
         raw = RawResponse(
             source=self._source,
             method=request.method,
@@ -121,10 +131,13 @@ class RecordingTransport(httpx.AsyncBaseTransport):
         url: str,
         outcome: FetchOutcome,
         status_code: int | None,
+        failed: bool | None,
         attempted_at: datetime,
     ) -> None:
         await self._attempts.save(
-            FetchAttempt(self._source, request.method, url, outcome, status_code, attempted_at)
+            FetchAttempt(
+                self._source, request.method, url, outcome, status_code, failed, attempted_at
+            )
         )
 
 

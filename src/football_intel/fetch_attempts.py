@@ -30,6 +30,8 @@ class FetchAttempt:
     url: str  # credentials redacted, as for Raw Responses
     outcome: FetchOutcome
     status_code: int | None  # of the answer, fetched or reused
+    # Whether the source's failure test rejected the answer; None when nothing answered.
+    failed: bool | None
     attempted_at: datetime
 
 
@@ -43,13 +45,13 @@ class SuccessRate:
     attempts: int
     success: int
     not_found: int
-    blocked: int
+    blocked: int  # 403/429, or another non-5xx answer the source's failure test rejected
     other_client_error: int
     server_error: int
     timeout_or_transport_error: int
     circuit_open: int
     reused: int
-    # Successes over the attempts that reached the source; None if none did.
+    # Successes and 404s over the attempts that reached the source; None if none did.
     success_rate: float | None
 
 
@@ -67,8 +69,8 @@ class FetchAttemptStore:
         await self._connection.execute(
             """
             INSERT INTO raw.fetch_attempts
-                (source, method, url, outcome, status_code, attempted_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+                (source, method, url, outcome, status_code, failed, attempted_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 attempt.source,
@@ -76,6 +78,7 @@ class FetchAttemptStore:
                 attempt.url,
                 attempt.outcome.value,
                 attempt.status_code,
+                attempt.failed,
                 attempt.attempted_at,
             ),
         )
