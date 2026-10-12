@@ -2,7 +2,7 @@
 
 > Durable football data ingestion with Temporal, and an AI scouting agent on top.
 
-**Status:** early development — local proof of concept, milestone M1 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](#roadmap).
+**Status:** early development — local proof of concept, milestone M2 of 7. A hosted MVP behind GitHub login follows. See the [roadmap](#roadmap).
 
 ## What it does
 
@@ -63,8 +63,8 @@ Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-witho
 
 | Milestone | Phase | Delivery | Status |
 |---|---|---|---|
-| M1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | 🚧 |
-| M2 | PoC | Sofascore, post-match workflows, three-season backfill | ⏳ |
+| M1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | ✅ |
+| M2 | PoC | Sofascore, post-match workflows, three-season backfill | 🚧 |
 | M3 | PoC | Understat, dbt, identity resolution | ⏳ |
 | M4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
 | M5 | MVP | Evals in CI, durable scouting report job | ⏳ |
