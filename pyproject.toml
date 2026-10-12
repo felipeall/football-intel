@@ -11,6 +11,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "import-linter",
+    "langfuse==4.17.0",
     "pyright",
     "pytest",
     "ruff",
@@ -28,7 +29,7 @@ target-version = "py313"
 select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "scripts"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 
