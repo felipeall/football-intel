@@ -7,6 +7,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from psycopg import AsyncConnection, sql
+from temporalio.testing import WorkflowEnvironment
 
 from football_intel.config import Settings
 
@@ -44,3 +45,17 @@ async def connection(database_url: str) -> AsyncIterator[AsyncConnection[Any]]:
     async with await AsyncConnection.connect(database_url, autocommit=True) as conn:
         await conn.execute("TRUNCATE raw.raw_responses")
         yield conn
+
+
+@pytest.fixture(scope="session")
+async def temporal() -> AsyncIterator[WorkflowEnvironment]:
+    # The SDK's signature has a partially unknown parameter type.
+    async with await WorkflowEnvironment.start_local() as env:  # pyright: ignore[reportUnknownMemberType]
+        yield env
+
+
+@pytest.fixture(scope="session")
+async def time_skipping() -> AsyncIterator[WorkflowEnvironment]:
+    # Skips the retry policy's backoff instead of waiting it out.
+    async with await WorkflowEnvironment.start_time_skipping() as env:  # pyright: ignore[reportUnknownMemberType]
+        yield env

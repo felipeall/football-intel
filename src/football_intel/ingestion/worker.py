@@ -8,7 +8,7 @@ from temporalio.worker import Worker
 
 from football_intel.config import Settings
 from football_intel.ingestion.activities import TransfermarktActivities
-from football_intel.ingestion.workflows import SquadIngestWorkflow
+from football_intel.ingestion.workflows import CompetitionSquadsWorkflow, SquadIngestWorkflow
 from football_intel.sources.interface import SourceInterface
 from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
 
@@ -20,8 +20,8 @@ async def run_worker(settings: Settings) -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[SquadIngestWorkflow],
-        activities=[activities.ingest_club_squad],
+        workflows=[SquadIngestWorkflow, CompetitionSquadsWorkflow],
+        activities=[activities.ingest_club_squad, activities.ingest_competition_clubs],
     )
     await worker.run()
 
