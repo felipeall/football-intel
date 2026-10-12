@@ -73,3 +73,9 @@ ignore_imports = [
     "football_intel.agent.providers.anthropic -> anthropic",
     "football_intel.agent.providers.anthropic.** -> anthropic",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Raw Response recording is source-neutral"
+type = "forbidden"
+source_modules = ["football_intel.sources.recording"]
+forbidden_modules = ["football_intel.sources.transfermarkt", "transfermarkt_api"]

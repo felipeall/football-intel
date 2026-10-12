@@ -16,9 +16,10 @@ from football_intel.ingestion.models import (
 )
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources.interface import CircuitOpenError, SourceInterface
+from football_intel.sources.recording import RecordingTransport
+from football_intel.sources.transfermarkt import recording_transport
 from football_intel.sources.transfermarkt.competitions import fetch_competition_clubs
 from football_intel.sources.transfermarkt.squads import fetch_squad
-from football_intel.sources.transfermarkt.transports import RecordingTransport
 
 
 class TransfermarktActivities:
@@ -81,7 +82,7 @@ class TransfermarktActivities:
         async with await AsyncConnection.connect(self._database_url, autocommit=True) as conn:
             freshness = None if refresh else self._source.freshness
             try:
-                yield RecordingTransport(
+                yield recording_transport(
                     self._source.transport(), RawResponseStore(conn), freshness
                 )
             except CircuitOpenError as error:
