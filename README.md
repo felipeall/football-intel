@@ -73,6 +73,18 @@ Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-witho
 
 **Backlog:** `LiteLLMRunner` (OpenAI, Gemini, Bedrock, Ollama, vLLM) and provider comparison evals, LiteLLM gateway, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 
+## Development
+
+Requires [`uv`](https://docs.astral.sh/uv/).
+
+```sh
+uv sync                    # Python 3.13 and dev tools
+uv run pytest              # tests
+uv run ruff check && uv run ruff format --check
+uv run pyright
+uv run lint-imports        # provider SDKs only inside agent/providers/<provider>/ (ADR 24)
+```
+
 ## Documentation
 
 - [`GLOSSARY.md`](GLOSSARY.md) — domain glossary

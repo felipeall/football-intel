@@ -61,8 +61,8 @@ ci: run eval suite on pull requests
 ## Branches and pull requests
 
 - `main` is always releasable.
-- Until CI exists (end of M1), commits go straight to `main`.
-- After that, one branch per change: `<type>/<short-description>` (`feat/sofascore-heatmaps`), merged by pull request with green CI.
+- One branch per change: `<type>/<short-description>` (`feat/sofascore-heatmaps`), merged by pull request with green CI.
+- CI (`.github/workflows/ci.yml`) runs `ruff`, `pyright`, `pytest`, `import-linter` and `gitleaks` on every pull request and push to `main`; `main` requires all of them to pass.
 - Pull request titles follow the commit format; squash-merge so the title becomes the commit on `main`.
 
 ## Decisions
