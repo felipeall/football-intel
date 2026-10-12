@@ -21,6 +21,17 @@ Football data platform: Temporal ingestion from scraped sources into Postgres, d
 - A new provider is done when it passes the shared runner conformance suite.
 - Chat runs the runner directly; Temporal is for ingestion and long-running jobs.
 - A new domain term goes into `GLOSSARY.md` in the same change.
+- Langfuse runs v4 in events-only mode: read traces through the v2 Observations API (`/api/public/v2/observations`); the legacy `/api/public/traces` endpoints answer with an error.
+
+## Pull requests
+
+`CONVENTIONS.md` sets the branch and commit format; these are the GitHub mechanics around it.
+
+- Open one pull request at a time, branched from `main`, and start dependent work once it has merged.
+- When a pull request must build on an unmerged one, retarget it to `main` (`gh pr edit <n> --base main`) before merging its base. Squash-merging with `--delete-branch` closes every pull request still based on the deleted branch, and GitHub refuses to reopen one whose branch was force-pushed since.
+- Read CI from the run on the pull request's current head commit (`gh run list --branch <branch>`); a rebase or force-push starts a new run.
+- Write `Closes #N` only in pull request bodies: in a commit pushed straight to `main` it closes the issue on push, before its remaining criteria are met. After `gh issue reopen`, confirm the state with `gh issue view`.
+- The repository is private on a free plan: branch protection and rulesets answer 403, so `main` has no required checks yet (#1).
 
 ## Progress
 

@@ -98,6 +98,8 @@ services:
       temporal:
         condition: service_healthy
 
+  # Langfuse web and worker listen on the container hostname, not on loopback,
+  # so their health checks call $$HOSTNAME.
   langfuse-web:
     image: langfuse/langfuse:4.56.0
     depends_on: *langfuse-depends-on
