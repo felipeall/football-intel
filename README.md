@@ -73,6 +73,19 @@ Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-witho
 
 **Backlog:** `LiteLLMRunner` (OpenAI, Gemini, Bedrock, Ollama, vLLM) and provider comparison evals, LiteLLM gateway, transfer rumor tracker, Opta feeds, WhoScored events, learned style embeddings, more leagues.
 
+## Run locally
+
+Requires Docker with Compose.
+
+```sh
+cp .env.example .env       # then replace the placeholder values
+docker compose up --wait   # Temporal dev server and Postgres 17 + pgvector
+```
+
+- Temporal gRPC on `localhost:7233`, web UI at <http://localhost:8233>.
+- Postgres on `localhost:5432`; data lives in the `postgres-data` volume and survives `docker compose down`. `docker compose down -v` deletes it.
+- The Temporal dev server keeps its state in memory: workflow history is lost on restart.
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
