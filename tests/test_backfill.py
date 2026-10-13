@@ -21,7 +21,7 @@ from football_intel.ingestion.workflows import (
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources import sofascore
 from football_intel.sources.interface import SourceInterface, SourcePolicy
-from football_intel.sources.sofascore.api import UpstreamError
+from football_intel.sources.sofascore.api import ChallengeError, UpstreamError, raise_for_failure
 from football_intel.sources.sofascore.matches import fetch_match
 from football_intel.sources.sofascore.seasons import fetch_finished_event_ids, fetch_seasons
 from tests.sofascore_stub import (
@@ -49,6 +49,20 @@ class FailingMatch(SofascoreStub):
         return super().handle(request)
 
 
+class ChallengedMatch(SofascoreStub):
+    """Answers every request for one Match with Sofascore's bot challenge."""
+
+    def __init__(self, event_id: int) -> None:
+        super().__init__()
+        self.event_id = event_id
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path.startswith(f"/api/v1/event/{self.event_id}"):
+            self.requests.append(request)
+            return httpx.Response(403, json={"error": {"code": 403, "reason": "challenge"}})
+        return super().handle(request)
+
+
 def _match_requests(stub: SofascoreStub) -> list[httpx.Request]:
     return [r for r in stub.requests if r.url.path.startswith("/api/v1/event/")]
 
@@ -64,6 +78,7 @@ async def _backfill(
     source: SourceInterface,
     year: str | None = "24/25",
     per_player: bool = True,
+    max_concurrent_matches: int = 3,
 ) -> BackfillResult:
     activities = SofascoreActivities(database_url, source)
     task_queue = f"test-{uuid.uuid4()}"
@@ -80,7 +95,12 @@ async def _backfill(
     ):
         return await env.client.execute_workflow(
             BackfillWorkflow.run,
-            BackfillInput(tournament_id=TOURNAMENT_ID, year=year, per_player=per_player),
+            BackfillInput(
+                tournament_id=TOURNAMENT_ID,
+                year=year,
+                per_player=per_player,
+                max_concurrent_matches=max_concurrent_matches,
+            ),
             id=f"backfill-{uuid.uuid4()}",
             task_queue=task_queue,
         )
@@ -241,3 +261,54 @@ async def test_a_match_level_pass_then_a_full_pass_fetch_each_response_once(
     assert full.seasons[0].already_complete == 0
     assert len(_match_requests(stub)) - len(_player_requests(stub)) == match_level
     assert len(_player_requests(stub)) == 2 * len(PLAYED) * len(SEASON_EVENT_IDS)
+
+
+def test_only_a_403_saying_challenge_is_the_challenge() -> None:
+    request = httpx.Request("GET", "https://www.sofascore.com/api/v1/event/1")
+    challenge = {"error": {"code": 403, "reason": "challenge"}}
+
+    with pytest.raises(ChallengeError):
+        raise_for_failure(httpx.Response(403, json=challenge, request=request))
+    for other in (
+        httpx.Response(403, request=request),
+        httpx.Response(429, json=challenge, request=request),
+    ):
+        with pytest.raises(UpstreamError) as error:
+            raise_for_failure(other)
+        assert not isinstance(error.value, ChallengeError)
+
+
+async def test_a_challenge_stops_the_season_without_retries(
+    time_skipping: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    stub = ChallengedMatch(FAILING_EVENT_ID)
+
+    result = await _backfill(
+        time_skipping, database_url, _source(stub.transport), max_concurrent_matches=1
+    )
+
+    (season,) = result.seasons
+    # 1005 went first; 1004 was challenged and failed; 1003 and 1001 were never started.
+    assert (season.ingested, season.failed_event_ids) == (1, [FAILING_EVENT_ID])
+    assert season.challenged
+    assert season.not_attempted_event_ids == [1003, 1001]
+    challenged = [
+        r for r in stub.requests if r.url.path.startswith(f"/api/v1/event/{FAILING_EVENT_ID}")
+    ]
+    assert len(challenged) == 1  # not retried
+    assert {r.url.path.split("/")[4] for r in _match_requests(stub)} == {
+        "1005",
+        str(FAILING_EVENT_ID),
+    }
+
+
+async def test_a_challenged_season_stops_the_backfill(
+    time_skipping: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    # Newest first: 26/27 has no Match played; 25/26's only Match is challenged; 24/25 never runs.
+    result = await _backfill(
+        time_skipping, database_url, _source(ChallengedMatch(EVENT_ID).transport), year=None
+    )
+
+    assert [season.season.year for season in result.seasons] == ["26/27", "25/26"]
+    assert result.seasons[-1].challenged

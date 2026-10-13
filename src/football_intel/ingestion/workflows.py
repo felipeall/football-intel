@@ -5,7 +5,12 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ChildWorkflowError, WorkflowAlreadyStartedError
+from temporalio.exceptions import (
+    ApplicationError,
+    ChildWorkflowError,
+    FailureError,
+    WorkflowAlreadyStartedError,
+)
 
 with workflow.unsafe.imports_passed_through():
     from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
@@ -156,17 +161,28 @@ class SeasonBackfillWorkflow:
             )
         pending = [event_id for event_id in listing.event_ids if event_id not in complete]
         slots = asyncio.Semaphore(input.max_concurrent_matches)
+        challenged = False
+        not_attempted: list[int] = []
 
         async def match(event_id: int) -> MatchIngestResult | None:
+            nonlocal challenged
             async with slots:
+                # Once Sofascore challenges, every further request would be challenged too.
+                if challenged:
+                    not_attempted.append(event_id)
+                    return None
                 try:
                     return await workflow.execute_child_workflow(
                         MatchIngestWorkflow.run,
                         MatchIngestInput(event_id, input.refresh, input.per_player),
                         id=f"{workflow.info().workflow_id}-match-{event_id}",
                     )
-                except ChildWorkflowError:
-                    workflow.logger.warning("Match %s failed", event_id)
+                except ChildWorkflowError as error:
+                    if _is_challenge(error):
+                        workflow.logger.warning("Match %s challenged; stopping", event_id)
+                        challenged = True
+                    else:
+                        workflow.logger.warning("Match %s failed", event_id)
                     return None
 
         results = await asyncio.gather(*(match(event_id) for event_id in pending))
@@ -179,10 +195,12 @@ class SeasonBackfillWorkflow:
             failed_event_ids=[
                 event_id
                 for event_id, result in zip(pending, results, strict=True)
-                if result is None
+                if result is None and event_id not in not_attempted
             ],
             raw_responses=listing.raw_responses + sum(r.raw_responses for r in ingested),
             reused=listing.reused + sum(r.reused for r in ingested),
+            challenged=challenged,
+            not_attempted_event_ids=[e for e in pending if e in not_attempted],
         )
 
 
@@ -202,6 +220,9 @@ class BackfillWorkflow:
         )
         results: list[SeasonBackfillResult] = []
         for season in seasons:
+            # A challenged season stopped early; the next would only be challenged too.
+            if results and results[-1].challenged:
+                break
             results.append(
                 await workflow.execute_child_workflow(
                     SeasonBackfillWorkflow.run,
@@ -216,6 +237,15 @@ class BackfillWorkflow:
                 )
             )
         return BackfillResult(input.tournament_id, results, input.per_player)
+
+
+def _is_challenge(error: BaseException | None) -> bool:
+    """Whether a failure was caused, at any depth, by Sofascore's bot challenge."""
+    while isinstance(error, FailureError):
+        if isinstance(error, ApplicationError) and error.type == "ChallengeError":
+            return True
+        error = error.cause
+    return False
 
 
 # A normal Match ends about 1h55 after kickoff; Sofascore's post-match statistics settle over
