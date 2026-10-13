@@ -33,8 +33,13 @@ class MatchResponses:
     statuses: dict[str, int]
 
 
-async def fetch_match(transport: httpx.AsyncBaseTransport, event_id: int) -> MatchResponses:
+async def fetch_match(
+    transport: httpx.AsyncBaseTransport, event_id: int, per_player: bool = True
+) -> MatchResponses:
     """Request everything we need from one finished Match through `transport`.
+
+    Match-level data is the event, lineups, shotmap and average positions. `per_player` adds a
+    heatmap and rating breakdown per player who appeared: 64 of a Match's ~68 requests.
 
     A 404 for the event or its lineups raises `MatchNotFound`. A 404 for the shotmap, average
     positions, or one player's heatmap or rating breakdown is a normal answer (little data,
@@ -59,7 +64,7 @@ async def fetch_match(transport: httpx.AsyncBaseTransport, event_id: int) -> Mat
         for path in MATCH_PATHS:
             await get(f"{match}{path}")
         player_ids = _appeared(lineups)
-        for player_id in player_ids:
+        for player_id in player_ids if per_player else ():
             for path in PLAYER_PATHS:
                 await get(f"{match}/player/{player_id}{path}")
 

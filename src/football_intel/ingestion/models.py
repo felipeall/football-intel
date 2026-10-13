@@ -76,10 +76,13 @@ class MatchIngestInput:
     """One finished Sofascore Match, by Sofascore event ID.
 
     `refresh` fetches every request from the source, even when a fresh Raw Response is stored.
+    `per_player` adds each appearing player's heatmap and rating breakdown to the Match-level
+    data.
     """
 
     event_id: int
     refresh: bool = False
+    per_player: bool = True
 
 
 @dataclass(frozen=True)
@@ -131,6 +134,7 @@ class SeasonMatchesResult:
 @dataclass(frozen=True)
 class CompleteMatchesInput:
     event_ids: list[int]
+    per_player: bool = True  # complete means per-player data too
 
 
 @dataclass(frozen=True)
@@ -145,6 +149,7 @@ class SeasonBackfillInput:
     season: SeasonRef
     refresh: bool = False
     max_concurrent_matches: int = 3
+    per_player: bool = True
 
 
 @dataclass(frozen=True)
@@ -162,17 +167,22 @@ class SeasonBackfillResult:
 
 @dataclass(frozen=True)
 class BackfillInput:
+    """`per_player` false is the Match-level first pass; true, the full pass that adds
+    per-player data."""
+
     tournament_id: int
     count: int = 3
     year: str | None = None
     refresh: bool = False
     max_concurrent_matches: int = 3
+    per_player: bool = True
 
 
 @dataclass(frozen=True)
 class BackfillResult:
     tournament_id: int
     seasons: list[SeasonBackfillResult]
+    per_player: bool = True
 
 
 @dataclass(frozen=True)

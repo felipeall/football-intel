@@ -148,7 +148,7 @@ class SeasonBackfillWorkflow:
             complete = set(
                 await workflow.execute_activity_method(
                     SofascoreActivities.complete_matches,
-                    CompleteMatchesInput(listing.event_ids),
+                    CompleteMatchesInput(listing.event_ids, input.per_player),
                     start_to_close_timeout=timedelta(minutes=30),
                     heartbeat_timeout=timedelta(minutes=1),
                     retry_policy=SOFASCORE_RETRY_POLICY,
@@ -162,7 +162,7 @@ class SeasonBackfillWorkflow:
                 try:
                     return await workflow.execute_child_workflow(
                         MatchIngestWorkflow.run,
-                        MatchIngestInput(event_id, input.refresh),
+                        MatchIngestInput(event_id, input.refresh, input.per_player),
                         id=f"{workflow.info().workflow_id}-match-{event_id}",
                     )
                 except ChildWorkflowError:
@@ -210,11 +210,12 @@ class BackfillWorkflow:
                         season,
                         input.refresh,
                         input.max_concurrent_matches,
+                        input.per_player,
                     ),
                     id=f"{workflow.info().workflow_id}-season-{season.id}",
                 )
             )
-        return BackfillResult(tournament_id=input.tournament_id, seasons=results)
+        return BackfillResult(input.tournament_id, results, input.per_player)
 
 
 # A normal Match ends about 1h55 after kickoff; Sofascore's post-match statistics settle over

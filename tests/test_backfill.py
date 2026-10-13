@@ -26,6 +26,7 @@ from football_intel.sources.sofascore.matches import fetch_match
 from football_intel.sources.sofascore.seasons import fetch_finished_event_ids, fetch_seasons
 from tests.sofascore_stub import (
     EVENT_ID,
+    PLAYED,
     SEASON_EVENT_IDS,
     SEASON_ID,
     SEASONS,
@@ -62,6 +63,7 @@ async def _backfill(
     database_url: str,
     source: SourceInterface,
     year: str | None = "24/25",
+    per_player: bool = True,
 ) -> BackfillResult:
     activities = SofascoreActivities(database_url, source)
     task_queue = f"test-{uuid.uuid4()}"
@@ -78,7 +80,7 @@ async def _backfill(
     ):
         return await env.client.execute_workflow(
             BackfillWorkflow.run,
-            BackfillInput(tournament_id=TOURNAMENT_ID, year=year),
+            BackfillInput(tournament_id=TOURNAMENT_ID, year=year, per_player=per_player),
             id=f"backfill-{uuid.uuid4()}",
             task_queue=task_queue,
         )
@@ -206,3 +208,36 @@ async def test_a_match_whose_latest_answer_was_a_failure_is_incomplete(
         sofascore.recording_transport(SofascoreStub().transport(), store, attempts), EVENT_ID
     )
     assert await complete() == [EVENT_ID]
+
+
+def _player_requests(stub: SofascoreStub) -> list[httpx.Request]:
+    return [r for r in stub.requests if "/player/" in r.url.path]
+
+
+async def test_a_match_level_pass_then_a_full_pass_fetch_each_response_once(
+    temporal: WorkflowEnvironment, database_url: str, connection: AsyncConnection[Any]
+) -> None:
+    stub = SofascoreStub()
+    source = _source(stub.transport)
+
+    first = await _backfill(temporal, database_url, source, per_player=False)
+
+    # Match-level: the event, lineups, shotmap and average positions; nothing per player.
+    assert not first.per_player
+    assert first.seasons[0].ingested == len(SEASON_EVENT_IDS)
+    assert len(_match_requests(stub)) == 4 * len(SEASON_EVENT_IDS)
+    assert _player_requests(stub) == []
+
+    sent = len(stub.requests)
+    rerun = await _backfill(temporal, database_url, source, per_player=False)
+    assert len(stub.requests) == sent  # complete at Match level: no request at all
+    assert rerun.seasons[0].already_complete == len(SEASON_EVENT_IDS)
+
+    match_level = len(_match_requests(stub)) - len(_player_requests(stub))
+    full = await _backfill(temporal, database_url, source)
+
+    # The full pass adds only the per-player requests; the Match-level ones are reused.
+    assert full.per_player
+    assert full.seasons[0].already_complete == 0
+    assert len(_match_requests(stub)) - len(_player_requests(stub)) == match_level
+    assert len(_player_requests(stub)) == 2 * len(PLAYED) * len(SEASON_EVENT_IDS)

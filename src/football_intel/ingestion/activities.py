@@ -118,7 +118,7 @@ class SofascoreActivities:
     async def ingest_match(self, input: MatchIngestInput) -> MatchIngestResult:
         """Fetch one finished Match and store every response as a Raw Response."""
         async with self._recording(input.refresh) as transport:
-            match = await fetch_match(_Heartbeat(transport), input.event_id)
+            match = await fetch_match(_Heartbeat(transport), input.event_id, input.per_player)
         activity.logger.info(
             "Match %s (%s): %d players; %d Raw Responses fetched, %d reused",
             input.event_id,
@@ -158,7 +158,8 @@ class SofascoreActivities:
 
     @activity.defn
     async def complete_matches(self, input: CompleteMatchesInput) -> list[int]:
-        """The Matches that replay from stored Raw Responses, so need no request.
+        """The Matches that replay from stored Raw Responses at the input's level, so need no
+        request.
 
         Finished Matches do not change: completeness, not the Freshness Window, decides
         whether one is fetched again. A missing Raw Response or a stored failure (the latest
@@ -170,7 +171,7 @@ class SofascoreActivities:
             for event_id in input.event_ids:
                 activity.heartbeat(event_id)
                 try:
-                    await fetch_match(replay, event_id)
+                    await fetch_match(replay, event_id, input.per_player)
                 except (
                     RawResponseMissingError,
                     UpstreamError,

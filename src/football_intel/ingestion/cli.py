@@ -92,7 +92,9 @@ async def ingest_match(settings: Settings, event_id: int, refresh: bool) -> None
     )
 
 
-async def backfill(settings: Settings, year: str | None, refresh: bool, concurrency: int) -> None:
+async def backfill(
+    settings: Settings, year: str | None, refresh: bool, concurrency: int, per_player: bool
+) -> None:
     client = await _client(settings)
     suffix = f"-{year.replace('/', '-')}" if year else ""
     result = await client.execute_workflow(
@@ -102,10 +104,12 @@ async def backfill(settings: Settings, year: str | None, refresh: bool, concurre
             year=year,
             refresh=refresh,
             max_concurrent_matches=concurrency,
+            per_player=per_player,
         ),
         id=f"backfill-{SOFASCORE_PREMIER_LEAGUE}{suffix}",
         task_queue=settings.temporal_task_queue,
     )
+    print("Full pass, with per-player data" if result.per_player else "Match-level pass")
     for season in result.seasons:
         print(
             f"Season {season.season.year}: {season.matches} finished Matches, "
@@ -221,6 +225,12 @@ def main() -> None:
     )
     backfill_parser.add_argument("--refresh", action="store_true", help=refresh_help)
     backfill_parser.add_argument(
+        "--match-level",
+        action="store_true",
+        help="first pass: event, lineups, shotmap and average positions only (4 requests a "
+        "Match); without it, the full pass adds per-player heatmaps and rating breakdowns",
+    )
+    backfill_parser.add_argument(
         "--concurrency", type=int, default=3, help="Matches in flight at once (default 3)"
     )
 
@@ -255,7 +265,9 @@ def main() -> None:
     elif args.command == "schedule-post-match":
         asyncio.run(schedule_post_match(settings))
     elif args.command == "backfill":
-        asyncio.run(backfill(settings, args.season, args.refresh, args.concurrency))
+        asyncio.run(
+            backfill(settings, args.season, args.refresh, args.concurrency, not args.match_level)
+        )
     elif args.command == "ingest-match":
         asyncio.run(ingest_match(settings, args.event_id, args.refresh))
     elif args.command == "ingest-squad":
