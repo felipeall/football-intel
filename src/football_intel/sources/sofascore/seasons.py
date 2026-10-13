@@ -58,3 +58,28 @@ async def fetch_finished_event_ids(
                 break
             page += 1
     return event_ids
+
+
+@dataclass(frozen=True)
+class Fixture:
+    event_id: int
+    start_timestamp: int  # kickoff, Unix seconds
+
+
+async def fetch_upcoming_fixtures(
+    transport: httpx.AsyncBaseTransport, tournament_id: int, season_id: int
+) -> list[Fixture]:
+    """The season's next Matches not started yet, soonest first: the first page of 30, about
+    three rounds. A season with nothing left to play answers 404."""
+    async with client(transport) as api:
+        response = await api.get(
+            f"/unique-tournament/{tournament_id}/season/{season_id}/events/next/0"
+        )
+    raise_for_failure(response)
+    if response.status_code == 404:
+        return []
+    return [
+        Fixture(event["id"], event["startTimestamp"])
+        for event in response.json()["events"]
+        if event["status"]["type"] == "notstarted"
+    ]

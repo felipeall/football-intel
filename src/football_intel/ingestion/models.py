@@ -173,3 +173,44 @@ class BackfillInput:
 class BackfillResult:
     tournament_id: int
     seasons: list[SeasonBackfillResult]
+
+
+@dataclass(frozen=True)
+class FixturesInput:
+    """Start a post-match workflow for each fixture kicking off within `horizon_days`."""
+
+    tournament_id: int
+    horizon_days: int = 8
+
+
+@dataclass(frozen=True)
+class FixtureRef:
+    event_id: int
+    start_timestamp: int  # kickoff, Unix seconds
+
+
+@dataclass(frozen=True)
+class FixturesResult:
+    started: list[int]  # Matches whose post-match workflow this run started
+    already_scheduled: list[int]  # Matches whose post-match workflow was already running
+    beyond_horizon: int  # fixtures left for a later run
+
+
+@dataclass(frozen=True)
+class PostMatchInput:
+    event_id: int
+    start_timestamp: int  # kickoff when the fixture was read, Unix seconds
+
+
+@dataclass(frozen=True)
+class MatchStatusResult:
+    status: str  # Sofascore's status type, e.g. "finished"
+    start_timestamp: int
+
+
+@dataclass(frozen=True)
+class PostMatchResult:
+    event_id: int
+    # "ingested", "postponed", "canceled", or "gave_up" after too many late checks.
+    outcome: str
+    ingest: MatchIngestResult | None = None

@@ -79,3 +79,22 @@ def _appeared(lineups: dict[str, Any]) -> tuple[int, ...]:
         for entry in lineups[side]["players"]
         if entry.get("statistics", {}).get("minutesPlayed")
     )
+
+
+@dataclass(frozen=True)
+class MatchStatus:
+    # Sofascore's status type: "notstarted", "inprogress", "finished", "postponed",
+    # "canceled", …
+    status: str
+    start_timestamp: int  # current kickoff, Unix seconds
+
+
+async def fetch_match_status(transport: httpx.AsyncBaseTransport, event_id: int) -> MatchStatus:
+    """Where a Match stands now, and its current kickoff. A 404 raises `MatchNotFound`."""
+    async with client(transport) as api:
+        response = await api.get(f"/event/{event_id}")
+    raise_for_failure(response)
+    if response.status_code == 404:
+        raise MatchNotFound(f"Sofascore has no event {event_id}")
+    event = response.json()["event"]
+    return MatchStatus(event["status"]["type"], event["startTimestamp"])

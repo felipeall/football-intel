@@ -17,6 +17,7 @@ from football_intel.ingestion.models import (
     SquadIngestInput,
     SquadIngestResult,
 )
+from football_intel.ingestion.schedules import POST_MATCH_SCHEDULE_ID, ensure_post_match_schedule
 from football_intel.ingestion.workflows import (
     BackfillWorkflow,
     CompetitionSquadsWorkflow,
@@ -114,6 +115,13 @@ async def backfill(settings: Settings, year: str | None, refresh: bool, concurre
         )
         if season.failed_event_ids:
             print(f"  Failed Matches: {', '.join(map(str, season.failed_event_ids))}")
+
+
+async def schedule_post_match(settings: Settings) -> None:
+    outcome = await ensure_post_match_schedule(
+        await _client(settings), settings.temporal_task_queue
+    )
+    print(f"Schedule {POST_MATCH_SCHEDULE_ID} {outcome}: daily at 06:00 UTC")
 
 
 SUCCESS_RATE_COLUMNS = (
@@ -216,6 +224,11 @@ def main() -> None:
         "--concurrency", type=int, default=3, help="Matches in flight at once (default 3)"
     )
 
+    commands.add_parser(
+        "schedule-post-match",
+        help="create or update the daily Schedule that starts post-match workflows",
+    )
+
     today = datetime.now(UTC).date()
     rates = commands.add_parser(
         "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
@@ -239,6 +252,8 @@ def main() -> None:
     settings = Settings()
     if args.command == "success-rates":
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
+    elif args.command == "schedule-post-match":
+        asyncio.run(schedule_post_match(settings))
     elif args.command == "backfill":
         asyncio.run(backfill(settings, args.season, args.refresh, args.concurrency))
     elif args.command == "ingest-match":

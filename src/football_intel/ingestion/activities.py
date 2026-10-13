@@ -14,8 +14,11 @@ from football_intel.ingestion.models import (
     CompetitionClubsInput,
     CompetitionClubsResult,
     CompleteMatchesInput,
+    FixtureRef,
+    FixturesInput,
     MatchIngestInput,
     MatchIngestResult,
+    MatchStatusResult,
     SeasonMatchesInput,
     SeasonMatchesResult,
     SeasonRef,
@@ -32,11 +35,13 @@ from football_intel.sources.sofascore.matches import (
     MatchNotFinished,
     MatchNotFound,
     fetch_match,
+    fetch_match_status,
 )
 from football_intel.sources.sofascore.seasons import (
     SeasonNotFound,
     fetch_finished_event_ids,
     fetch_seasons,
+    fetch_upcoming_fixtures,
 )
 from football_intel.sources.transfermarkt.competitions import fetch_competition_clubs
 from football_intel.sources.transfermarkt.squads import fetch_squad
@@ -175,6 +180,32 @@ class SofascoreActivities:
                     continue
                 complete.append(event_id)
         return complete
+
+    @activity.defn
+    async def upcoming_fixtures(self, input: FixturesInput) -> list[FixtureRef]:
+        """The current season's next fixtures, soonest first.
+
+        Always fetched: the Freshness Window would answer with yesterday's list.
+        """
+        # One transport per call: closing a client closes its transport.
+        async with self._recording(refresh=True) as transport:
+            seasons = await fetch_seasons(transport, input.tournament_id)
+        if not seasons:
+            return []
+        async with self._recording(refresh=True) as transport:
+            fixtures = await fetch_upcoming_fixtures(transport, input.tournament_id, seasons[0].id)
+        return [FixtureRef(f.event_id, f.start_timestamp) for f in fixtures]
+
+    @activity.defn
+    async def match_status(self, event_id: int) -> MatchStatusResult:
+        """A Match's status and current kickoff.
+
+        Always fetched: a stored event from an earlier check, still inside the Freshness
+        Window, would report the Match as not started.
+        """
+        async with self._recording(refresh=True) as transport:
+            status = await fetch_match_status(transport, event_id)
+        return MatchStatusResult(status.status, status.start_timestamp)
 
     def _recording(self, refresh: bool) -> AbstractAsyncContextManager[RecordingTransport]:
         return _recording(self._database_url, self._source, sofascore.recording_transport, refresh)

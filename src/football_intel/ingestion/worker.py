@@ -11,7 +11,9 @@ from football_intel.ingestion.activities import SofascoreActivities, Transfermar
 from football_intel.ingestion.workflows import (
     BackfillWorkflow,
     CompetitionSquadsWorkflow,
+    FixturesWorkflow,
     MatchIngestWorkflow,
+    PostMatchWorkflow,
     SeasonBackfillWorkflow,
     SquadIngestWorkflow,
 )
@@ -40,6 +42,8 @@ async def run_worker(settings: Settings) -> None:
             MatchIngestWorkflow,
             SeasonBackfillWorkflow,
             BackfillWorkflow,
+            PostMatchWorkflow,
+            FixturesWorkflow,
         ],
         activities=[
             activities.ingest_club_squad,
@@ -48,6 +52,8 @@ async def run_worker(settings: Settings) -> None:
             match_activities.tournament_seasons,
             match_activities.season_matches,
             match_activities.complete_matches,
+            match_activities.upcoming_fixtures,
+            match_activities.match_status,
         ],
     )
     await worker.run()
