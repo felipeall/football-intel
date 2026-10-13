@@ -123,6 +123,8 @@ async def test_a_finished_match_is_ingested_after_its_timer(
     assert result.outcome == "ingested"
     assert result.ingest is not None
     assert result.ingest.players == len(PLAYED)
+    # In full: per-player heatmaps and rating breakdowns included.
+    assert sum("/player/" in r.url.path for r in stub.requests) == 2 * len(PLAYED)
     # One status check; the ingest then reused the finished event it stored.
     assert stub.status_checks == 1
     # The timer ran to kickoff + 4h before that check.
