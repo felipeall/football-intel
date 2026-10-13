@@ -20,7 +20,8 @@ from football_intel.raw_responses import RawResponseStore
 from football_intel.sources import sofascore
 from football_intel.sources.interface import CircuitOpenError, SourceInterface, SourcePolicy
 from football_intel.sources.recording import RawResponseMissingError
-from football_intel.sources.sofascore.matches import UpstreamError, fetch_match
+from football_intel.sources.sofascore.api import UpstreamError
+from football_intel.sources.sofascore.matches import fetch_match
 from tests.sofascore_stub import (
     BENCHED,
     EVENT_ID,

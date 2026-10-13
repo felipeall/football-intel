@@ -2,8 +2,13 @@
 
 Event 1001 is a finished Match. Players 11 and 12 (home) and 21 and 22 (away) played; 13 sat
 on the bench, so it has no minutes and no heatmap. Player 22 came on late: its heatmap
-answers 404, which is normal and must not fail the Match. Event 1002 has not started. Any
-other event answers 404.
+answers 404, which is normal and must not fail the Match. Events 1003, 1004 and 1005 are
+finished Matches with the same lineups. Event 1002 has not started. Any other event answers
+404.
+
+Tournament 17 has four seasons, newest first. Season 501 ("24/25") lists its events on two
+pages: 1005, 1004, a postponed 1006 and 1003, then 1003 again and 1001. Season 502 ("25/26")
+has one page with 1001. Season 503 ("26/27") has no Match played yet: its first page is 404.
 """
 
 from typing import Any
@@ -12,6 +17,19 @@ import httpx
 
 EVENT_ID = 1001
 NOT_STARTED_EVENT_ID = 1002
+FINISHED_EVENT_IDS = (1001, 1003, 1004, 1005)
+TOURNAMENT_ID = 17
+SEASONS = ((503, "26/27"), (502, "25/26"), (501, "24/25"), (500, "23/24"))
+SEASON_ID = 501
+SEASON_EVENT_IDS = (1005, 1004, 1003, 1001)  # finished, newest first, each once
+EVENT_PAGES: dict[tuple[int, int], tuple[list[tuple[int, str]], bool]] = {
+    (501, 0): (
+        [(1005, "finished"), (1004, "finished"), (1006, "postponed"), (1003, "finished")],
+        True,
+    ),
+    (501, 1): ([(1003, "finished"), (1001, "finished")], False),
+    (502, 0): ([(1001, "finished")], False),
+}
 PLAYED = (11, 12, 21, 22)
 BENCHED = 13
 NO_HEATMAP = 22
@@ -51,11 +69,27 @@ class SofascoreStub:
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
-        match = f"{BASE}/{EVENT_ID}"
+        if path == f"/api/v1/unique-tournament/{TOURNAMENT_ID}/seasons":
+            seasons = [{"id": id, "year": year} for id, year in SEASONS]
+            return httpx.Response(200, json={"seasons": seasons})
+        tournament = f"/api/v1/unique-tournament/{TOURNAMENT_ID}/season/"
+        if path.startswith(tournament) and "/events/last/" in path:
+            season, page = path.removeprefix(tournament).split("/events/last/")
+            if (int(season), int(page)) not in EVENT_PAGES:
+                return _not_found()
+            events, has_next = EVENT_PAGES[(int(season), int(page))]
+            listed = [_event(id, status)["event"] for id, status in events]
+            return httpx.Response(200, json={"events": listed, "hasNextPage": has_next})
         if path == f"{BASE}/{NOT_STARTED_EVENT_ID}":
             return httpx.Response(200, json=_event(NOT_STARTED_EVENT_ID, "notstarted"))
+        event_id = next(
+            (id for id in FINISHED_EVENT_IDS if f"{path}/".startswith(f"{BASE}/{id}/")), None
+        )
+        if event_id is None:
+            return _not_found()
+        match = f"{BASE}/{event_id}"
         if path == match:
-            return httpx.Response(200, json=_event(EVENT_ID, "finished"))
+            return httpx.Response(200, json=_event(event_id, "finished"))
         if path == f"{match}/lineups":
             return httpx.Response(200, json=LINEUPS)
         if path == f"{match}/shotmap":

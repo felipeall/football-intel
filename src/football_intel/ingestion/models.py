@@ -96,3 +96,80 @@ class MatchIngestResult:
     def cache_hit(self) -> bool:
         """True when the run sent no request to the source."""
         return self.raw_responses == 0
+
+
+@dataclass(frozen=True)
+class SeasonsInput:
+    """A tournament's latest `count` seasons, or only the one with year `year` (e.g. "24/25")."""
+
+    tournament_id: int
+    count: int = 3
+    year: str | None = None
+    refresh: bool = False
+
+
+@dataclass(frozen=True)
+class SeasonRef:
+    id: int
+    year: str
+
+
+@dataclass(frozen=True)
+class SeasonMatchesInput:
+    tournament_id: int
+    season_id: int
+    refresh: bool = False
+
+
+@dataclass(frozen=True)
+class SeasonMatchesResult:
+    event_ids: list[int]  # finished Matches, newest first
+    raw_responses: int
+    reused: int
+
+
+@dataclass(frozen=True)
+class CompleteMatchesInput:
+    event_ids: list[int]
+
+
+@dataclass(frozen=True)
+class SeasonBackfillInput:
+    """Every finished Match of one season.
+
+    `max_concurrent_matches` caps the Matches in flight: they share the source's rate limit,
+    so more at once only makes each Match's activity take longer.
+    """
+
+    tournament_id: int
+    season: SeasonRef
+    refresh: bool = False
+    max_concurrent_matches: int = 3
+
+
+@dataclass(frozen=True)
+class SeasonBackfillResult:
+    season: SeasonRef
+    matches: int  # finished Matches in the season
+    already_complete: int  # skipped: every Raw Response a replay needs was stored
+    ingested: int
+    # Matches whose ingest failed; the others still ran to completion.
+    failed_event_ids: list[int]
+    # Over the season's event pages and every ingested Match.
+    raw_responses: int
+    reused: int
+
+
+@dataclass(frozen=True)
+class BackfillInput:
+    tournament_id: int
+    count: int = 3
+    year: str | None = None
+    refresh: bool = False
+    max_concurrent_matches: int = 3
+
+
+@dataclass(frozen=True)
+class BackfillResult:
+    tournament_id: int
+    seasons: list[SeasonBackfillResult]

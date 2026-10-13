@@ -112,6 +112,14 @@ uv run football-intel ingest-match 16363874
 
 That stores the event, its lineups with per-player statistics, the shotmap, average positions, and a heatmap and rating breakdown for every player who appeared: about 70 requests, a little over a minute at the default rate. Sofascore answers plain HTTP clients with 403, so its requests go through `curl_cffi` with Chrome impersonation ([ADR 14](docs/adr/0014-scraping-access.md)); rate limit, circuit breaker and proxy are set like Transfermarkt's, with `SOFASCORE__*` variables. The run shows in the Temporal UI as `match-16363874`.
 
+Backfill every finished Premier League Match of the current season and the two before it ([ADR 5](docs/adr/0005-coverage-and-refresh.md)), or one season with `--season 24/25`:
+
+```sh
+uv run football-intel backfill
+```
+
+Three full seasons are about 820 Matches and 56,000 requests: around 16 hours at one request per second. Each season runs as a child workflow, and each Match as its own `MatchIngestWorkflow`, three at a time (`--concurrency`), all sharing Sofascore's rate limit. A Match that fails is listed at the end without stopping the others. The run is durable: it survives a worker restart. Re-running it resumes, because Matches already stored completely (every Raw Response a replay needs, none of them a failure) are skipped without a request. Finished Matches do not change, so completeness decides, not the Freshness Window; `--refresh` re-fetches everything anyway. The run shows in the Temporal UI as `backfill-17`.
+
 Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, including timeouts, transport errors, circuit-breaker rejections and reuses of a fresh Raw Response. Print each source's outcomes and success rate per day (UTC) for the last seven days, or for a range with `--from` and `--to`:
 
 ```sh

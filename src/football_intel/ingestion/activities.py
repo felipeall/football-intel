@@ -13,16 +13,31 @@ from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.ingestion.models import (
     CompetitionClubsInput,
     CompetitionClubsResult,
+    CompleteMatchesInput,
     MatchIngestInput,
     MatchIngestResult,
+    SeasonMatchesInput,
+    SeasonMatchesResult,
+    SeasonRef,
+    SeasonsInput,
     SquadIngestInput,
     SquadIngestResult,
 )
 from football_intel.raw_responses import RawResponseStore
 from football_intel.sources import sofascore, transfermarkt
 from football_intel.sources.interface import CircuitOpenError, SourceInterface
-from football_intel.sources.recording import RecordingTransport
-from football_intel.sources.sofascore.matches import fetch_match
+from football_intel.sources.recording import RawResponseMissingError, RecordingTransport
+from football_intel.sources.sofascore.api import UpstreamError
+from football_intel.sources.sofascore.matches import (
+    MatchNotFinished,
+    MatchNotFound,
+    fetch_match,
+)
+from football_intel.sources.sofascore.seasons import (
+    SeasonNotFound,
+    fetch_finished_event_ids,
+    fetch_seasons,
+)
 from football_intel.sources.transfermarkt.competitions import fetch_competition_clubs
 from football_intel.sources.transfermarkt.squads import fetch_squad
 
@@ -97,10 +112,8 @@ class SofascoreActivities:
     @activity.defn
     async def ingest_match(self, input: MatchIngestInput) -> MatchIngestResult:
         """Fetch one finished Match and store every response as a Raw Response."""
-        async with _recording(
-            self._database_url, self._source, sofascore.recording_transport, input.refresh
-        ) as transport:
-            match = await fetch_match(transport, input.event_id)
+        async with self._recording(input.refresh) as transport:
+            match = await fetch_match(_Heartbeat(transport), input.event_id)
         activity.logger.info(
             "Match %s (%s): %d players; %d Raw Responses fetched, %d reused",
             input.event_id,
@@ -116,6 +129,70 @@ class SofascoreActivities:
             raw_responses=transport.recorded,
             reused=transport.reused,
         )
+
+    @activity.defn
+    async def tournament_seasons(self, input: SeasonsInput) -> list[SeasonRef]:
+        """The tournament's latest `count` seasons, newest first, or the one with `year`."""
+        async with self._recording(input.refresh) as transport:
+            seasons = await fetch_seasons(transport, input.tournament_id)
+        if input.year is None:
+            return [SeasonRef(season.id, season.year) for season in seasons[: input.count]]
+        for season in seasons:
+            if season.year == input.year:
+                return [SeasonRef(season.id, season.year)]
+        raise SeasonNotFound(f"Tournament {input.tournament_id} has no season {input.year}")
+
+    @activity.defn
+    async def season_matches(self, input: SeasonMatchesInput) -> SeasonMatchesResult:
+        """A season's finished Matches; its event pages are stored as Raw Responses."""
+        async with self._recording(input.refresh) as transport:
+            event_ids = await fetch_finished_event_ids(
+                transport, input.tournament_id, input.season_id
+            )
+        return SeasonMatchesResult(event_ids, transport.recorded, transport.reused)
+
+    @activity.defn
+    async def complete_matches(self, input: CompleteMatchesInput) -> list[int]:
+        """The Matches that replay from stored Raw Responses, so need no request.
+
+        Finished Matches do not change: completeness, not the Freshness Window, decides
+        whether one is fetched again. A missing Raw Response or a stored failure (the latest
+        answer to a request was a 403, say) makes a Match incomplete.
+        """
+        complete: list[int] = []
+        async with await AsyncConnection.connect(self._database_url, autocommit=True) as conn:
+            replay = sofascore.replay_transport(RawResponseStore(conn))
+            for event_id in input.event_ids:
+                activity.heartbeat(event_id)
+                try:
+                    await fetch_match(replay, event_id)
+                except (
+                    RawResponseMissingError,
+                    UpstreamError,
+                    MatchNotFound,
+                    MatchNotFinished,
+                ):
+                    continue
+                complete.append(event_id)
+        return complete
+
+    def _recording(self, refresh: bool) -> AbstractAsyncContextManager[RecordingTransport]:
+        return _recording(self._database_url, self._source, sofascore.recording_transport, refresh)
+
+
+class _Heartbeat(httpx.AsyncBaseTransport):
+    """Heartbeat on every request, so a worker that died mid-Match is noticed within the
+    activity's heartbeat timeout rather than its whole start-to-close timeout."""
+
+    def __init__(self, transport: httpx.AsyncBaseTransport) -> None:
+        self._transport = transport
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        activity.heartbeat()
+        return await self._transport.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._transport.aclose()
 
 
 RecordingFactory = Callable[
