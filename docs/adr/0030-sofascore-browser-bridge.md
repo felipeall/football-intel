@@ -20,10 +20,15 @@ The homepage itself serves Sofascore's captcha page (`/captcha.html?redirectUrl=
   - the same, adding the browser's exact User-Agent
   - plain `curl`
 - **The `x-requested-with` header.** The web app sends `x-requested-with: sha256(str(unix_time // 1800))[:6]`, a value that rotates every 30 minutes. Sending it, with or without a token, was challenged too. It is not the token's `f` claim.
-- **A headless browser.** Scrapling's stealth session on the installed Chrome, headless, reported the Turnstile solved. The page never left `captcha.html`, no token was issued, and in-page API calls were challenged. #32 recorded the same for plain Playwright, headless and headed.
+- **The installed Chrome, headless.** Scrapling's stealth session with `real_chrome=True`, headless, reported the Turnstile solved. The page never left `captcha.html`, no token was issued, and in-page API calls were challenged. #32 recorded the same for plain Playwright, headless and headed. Stealth patches matter more than headed or headless.
 
 ### What does get past it (probed 2026-10-13)
-A **headed** stealth Chrome. The probe ran Scrapling 0.4.15 `StealthySession(real_chrome=True, headless=False, solve_cloudflare=True)` with a scratch profile, on the developer's Mac:
+A stealth browser that solves the Turnstile itself. Two setups passed, both with Scrapling 0.4.15 `StealthySession(solve_cloudflare=True)` and a scratch profile, on the developer's Mac:
+
+- **Headless, with patchright's bundled Chromium** (Chrome for Testing 153, `executable_path`): solved in 35 seconds.
+- **Headed, with the installed Chrome** (`real_chrome=True`, `headless=False`): solved in 16 seconds.
+
+In both runs:
 
 1. It loaded `captcha.html`.
 2. Scrapling clicked the Turnstile checkbox.
@@ -41,6 +46,11 @@ The same token, sent from `curl_cffi` straight after, was still challenged. Requ
   - It recycled the browser at 2 GiB of memory or after 6 hours, only while the token had at least 10 minutes left.
   - It turned the browser HTTP cache off for stateful responses, so a cached response cannot keep showing a finished match as in progress.
   - It cleared the cookie before a re-solve, because `captcha.html` redirects without issuing a new token while a cookie is present.
+- **tunjayoff/sofascore_scraper `main`.** Its released `BrowserBridge` is headless patchright Chromium through Scrapling `StealthySession`. Its changelog says it "passes the Cloudflare Turnstile challenge on its own" and "runs headless on a desktop and on a display-less server alike". Its Docker image installs it with `patchright install --with-deps --no-shell chromium`, with no Xvfb. After a challenge, it sends requests straight to the browser for 10 minutes ("browser-first"). Its status notes record every plain `curl` request challenged on 29 September 2026.
+- **Botasaurus**, an anti-detect Chromium wrapper.
+  - Sharone-12/sofascore-scraper (October 2026) uses it headless and fetches the API URLs as page navigations. It reports that Playwright with stealth patches failed while the token was being issued, and Botasaurus passed "cleanly: headless, no manual click".
+  - ScraperFC PR #94 (open since June 2026, unmerged) warms a Botasaurus session on the homepage, then issues in-page XHRs. ScraperFC's own Sofascore scraper (issue #93) has been broken since June.
+- **Crawlora** sells a hosted Sofascore API. ADR 14 rules out paid scraping APIs.
 - **probberechts/soccerdata.**
   - #835 (May 2025) only gets past TLS fingerprinting, with `tls-requests`, which is what our `curl_cffi` already does.
   - #955 (July 2026) added a seleniumbase captcha solver (`uc_gui_handle_captcha`), but only for its Selenium readers (WhoScored, FBref). It refuses to run headless.
@@ -48,14 +58,16 @@ The same token, sent from `curl_cffi` straight after, was still challenged. Requ
 - **#34 / PR #35.** A challenge now raises `ChallengeError`. It is not retried, and a backfill stops at the first one instead of spending every Match's attempts against it.
 
 ## Decision (proposed)
-- **A Browser Bridge is the Sofascore backend.** It is one long-lived headed stealth Chrome per worker: Scrapling `StealthySession` (patchright), `solve_cloudflare=True`, a persistent profile under `data/`. It replaces `curl_cffi` impersonation for Sofascore only. It sits behind the common source interface as the `httpx` transport backend that `SourceInterface` already accepts (`backend=`). The rate limit, circuit breaker, Raw Response recording and Fetch Attempts therefore apply unchanged, and the activities and parsers do not change.
+- **A Browser Bridge is the Sofascore backend.** It is one long-lived headless stealth browser per worker: Scrapling `StealthySession` on patchright's bundled Chromium, `solve_cloudflare=True`, a persistent profile under `data/`. It does not use the installed Chrome, which fails headless. It replaces `curl_cffi` impersonation for Sofascore only. It sits behind the common source interface as the `httpx` transport backend that `SourceInterface` already accepts (`backend=`). The rate limit, circuit breaker, Raw Response recording and Fetch Attempts therefore apply unchanged, and the activities and parsers do not change.
 - **Every Sofascore request is an in-page `fetch()`** from a `www.sofascore.com` page that has a Captcha Token. The fetch uses `cache: "no-store"` and sends the web app's `x-captcha` and `x-requested-with` headers. The result goes back through the transport as an ordinary `httpx.Response`, so it is stored as a Raw Response like any other answer.
 - **Solving:**
   - The bridge solves on launch, when the API answers `challenge` or `jwt:*`, and in the background about 15 minutes before the token's `exp`.
   - Before a re-solve it clears `sofa_captcha`.
   - After a failed solve it backs off 180, 180, 360, then 600 seconds, and it loads `captcha.html` at most 8 times in any hour.
   - While a solve is backing off, a request answers `ChallengeError` without being sent, so a backfill stops as PR #35 does today.
-- **Where it runs.** The bridge needs a display. In the worker container that means Chromium under Xvfb. On the developer's Mac it is a visible Chrome window. Which of the two it is, and whether Turnstile passes under Xvfb in Linux at all, is the first thing the implementation verifies. If Xvfb does not pass, the bridge runs on the host and the worker reaches it over a local HTTP port.
+- **Where it runs.** The bridge runs in the worker container, headless, with no display. tunjayoff's Docker image does the same in production. The implementation first verifies that Turnstile passes in Linux Chromium in our container. If it does not, there are two fallbacks:
+  - a headed browser under Xvfb;
+  - a bridge on the host, which the worker reaches over a local HTTP port. ADR 22 keeps ingestion on the developer's machine, so this is available.
 - **Recycling.** The bridge restarts its browser, keeping the same profile, at a memory ceiling or a maximum age, and only while the token has at least 10 minutes left.
 - **Unchanged:**
   - Sofascore's rate limit stays at 0.5 requests per second (ADR 4).
@@ -63,10 +75,10 @@ The same token, sent from `curl_cffi` straight after, was still challenged. Requ
   - Transfermarkt and Understat do not change.
 - **Amendments:**
   - ADR 4 gains an exception: for Sofascore, the platform solves the source's human-verification challenge automatically, at polite rates.
-  - ADR 14's "Playwright as a fallback for sources that require JavaScript" becomes "a headed stealth browser for Sofascore, whose API requires a captcha-bound session".
+  - ADR 14's "Playwright as a fallback for sources that require JavaScript" becomes "a headless stealth browser for Sofascore, whose API requires a captcha-bound session".
 
 ## Consequences
-- **Sofascore stays the primary source of stats and spatial data (ADR 3)**, at the cost of a browser per worker. The worker image grows by a Chromium build and Xvfb. Memory grows by about 0.5–2 GiB.
+- **Sofascore stays the primary source of stats and spatial data (ADR 3)**, at the cost of a browser per worker. The worker image grows by a Chromium build (about 190 MB) and its system libraries. Memory grows by about 0.5–2 GiB.
 - **New pinned dependencies:** `scrapling[fetchers]` and `patchright`. Turnstile changes break the solver without warning. The fix is a Scrapling bump, and #206's pinned-version tests are the model for catching it.
 - **Throughput:**
   - Requests are serialised through one page. 0.5 requests per second is well below what the page can do, so the rate limit, not the bridge, sets the pace.
@@ -78,6 +90,6 @@ The same token, sent from `curl_cffi` straight after, was still challenged. Requ
 - **Tests.** Tests keep stubbing the transport. The bridge's own logic (solve backoff, refresh timing, the 8-loads-per-hour cap, held-back requests) is unit-tested with a fake page, as #206 did.
 
 ## Open questions for the implementation
-1. Does Turnstile pass in Chromium under Xvfb in the worker container? (Probed only on macOS with a visible Chrome.)
+1. Does Turnstile pass headless in Linux Chromium in the worker container? It was probed only on macOS. tunjayoff reports that it passes in its Docker image.
 2. Does the challenge come back with a valid token after enough volume, as it did after about 1,300 tokenless requests? A soak at 0.5 requests per second for several hours answers it.
 3. How often does a solve fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
