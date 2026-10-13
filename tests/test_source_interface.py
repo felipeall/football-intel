@@ -269,3 +269,15 @@ def test_source_policy_reads_from_nested_environment(monkeypatch: pytest.MonkeyP
     assert policy.proxy is not None
     assert policy.proxy.get_secret_value() == "http://u:p@proxy.example:8080"
     assert policy.proxy.get_secret_value() not in repr(Settings(_env_file=None))  # pyright: ignore[reportCallIssue]
+
+
+def test_overriding_one_sofascore_setting_keeps_its_other_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SOFASCORE__REQUESTS_PER_SECOND", "0.25")
+
+    policy = Settings(_env_file=None).sofascore  # pyright: ignore[reportCallIssue]
+
+    assert policy.requests_per_second == 0.25
+    assert policy.breaker_cooldown_seconds == 900
+    assert Settings(_env_file=None).transfermarkt.breaker_cooldown_seconds == 60  # pyright: ignore[reportCallIssue]

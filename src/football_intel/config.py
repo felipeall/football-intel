@@ -3,6 +3,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from football_intel.sources.interface import SourcePolicy
+from football_intel.sources.sofascore import SofascorePolicy
 
 
 class Settings(BaseSettings):
@@ -23,7 +24,7 @@ class Settings(BaseSettings):
 
     # One policy per source, e.g. TRANSFERMARKT__REQUESTS_PER_SECOND=0.5.
     transfermarkt: SourcePolicy = SourcePolicy()
-    sofascore: SourcePolicy = SourcePolicy()
+    sofascore: SofascorePolicy = SofascorePolicy()
 
     @property
     def database_url(self) -> str:

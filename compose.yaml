@@ -91,6 +91,10 @@ services:
 
   worker:
     build: .
+    # Per-source policies (TRANSFERMARKT__*, SOFASCORE__*); `environment` wins for the rest.
+    env_file:
+      - path: .env
+        required: false
     environment: *app-env
     depends_on:
       migrate:

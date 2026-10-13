@@ -3,13 +3,26 @@
 from datetime import timedelta
 
 import httpx
+from pydantic import Field
 
 from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.raw_responses import RawResponseStore
-from football_intel.sources.interface import is_server_failure
+from football_intel.sources.interface import SourcePolicy, is_server_failure
 from football_intel.sources.recording import RecordingTransport, ReplayTransport
 
 SOURCE = "sofascore"
+
+
+class SofascorePolicy(SourcePolicy):
+    """Sofascore's defaults, from the #21 backfill. A sustained 1 request per second drew a
+    403 bot challenge (`"reason": "challenge"`) within minutes, so: half that rate, and a
+    15-minute circuit-breaker cool-down. Retries wait out the cool-down, so a Match outlasts
+    about an hour of challenges before it fails. Defaults on a subclass, so overriding one
+    field from the environment keeps the others."""
+
+    requests_per_second: float = Field(default=0.5, gt=0)
+    breaker_cooldown_seconds: float = Field(default=900.0, gt=0)
+
 
 # Temporal does not retry these: asking again cannot change the answer.
 NON_RETRYABLE_ERRORS = (
