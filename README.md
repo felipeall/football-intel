@@ -120,6 +120,14 @@ uv run football-intel backfill
 
 Three full seasons are about 820 Matches and 56,000 requests: around 16 hours at one request per second. Each season runs as a child workflow, and each Match as its own `MatchIngestWorkflow`, three at a time (`--concurrency`), all sharing Sofascore's rate limit. A Match that fails is listed at the end without stopping the others. The run is durable: it survives a worker restart. Re-running it resumes, because Matches already stored completely (every Raw Response a replay needs, none of them a failure) are skipped without a request. Finished Matches do not change, so completeness decides, not the Freshness Window; `--refresh` re-fetches everything anyway. The run shows in the Temporal UI as `backfill-17`.
 
+New Matches are ingested automatically after they are played. Create, or update, the daily Schedule once:
+
+```sh
+uv run football-intel schedule-post-match
+```
+
+Every day at 06:00 UTC it reads the Premier League's next fixtures and starts one post-match workflow per Match kicking off within eight days, named `post-match-<event id>`; a fixture seen on several days starts only one. Each one sleeps on a durable timer until kickoff + 4 hours (final whistle + 2 hours, [ADR 5](docs/adr/0005-coverage-and-refresh.md)), then checks the Match. Finished, it is ingested like `ingest-match`. Moved to a new kickoff, the wait starts over. Still on, it is checked again every 30 minutes, up to 12 times. Postponed or cancelled, the workflow ends, and a later run picks up the new date. To run it now instead of waiting for 06:00, trigger it from the Temporal UI or with `temporal schedule trigger --schedule-id post-match-fixtures`.
+
 Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, including timeouts, transport errors, circuit-breaker rejections and reuses of a fresh Raw Response. Print each source's outcomes and success rate per day (UTC) for the last seven days, or for a range with `--from` and `--to`:
 
 ```sh

@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ChildWorkflowError
+from temporalio.exceptions import ChildWorkflowError, WorkflowAlreadyStartedError
 
 with workflow.unsafe.imports_passed_through():
     from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
@@ -16,8 +16,12 @@ with workflow.unsafe.imports_passed_through():
         CompetitionSquadsInput,
         CompetitionSquadsResult,
         CompleteMatchesInput,
+        FixturesInput,
+        FixturesResult,
         MatchIngestInput,
         MatchIngestResult,
+        PostMatchInput,
+        PostMatchResult,
         SeasonBackfillInput,
         SeasonBackfillResult,
         SeasonMatchesInput,
@@ -211,3 +215,105 @@ class BackfillWorkflow:
                 )
             )
         return BackfillResult(tournament_id=input.tournament_id, seasons=results)
+
+
+# A normal Match ends about 1h55 after kickoff; Sofascore's post-match statistics settle over
+# the next two hours (ADR 5: final whistle + 2h).
+CHECK_AFTER_KICKOFF = timedelta(hours=4)
+# A Match still on at that check (delayed, extra time…) is checked again this often, up to
+# this many times.
+LATE_CHECK_INTERVAL = timedelta(minutes=30)
+MAX_LATE_CHECKS = 12
+ENDED_WITHOUT_PLAY = frozenset({"postponed", "canceled", "cancelled", "abandoned"})
+
+
+@workflow.defn
+class PostMatchWorkflow:
+    """Wait for one fixture to be played, then store it as Raw Responses.
+
+    Sleeps on a durable timer until kickoff + 4h, then checks the Match: finished, it is
+    ingested; not started yet with a new kickoff, the wait starts over from that kickoff;
+    still on, it is checked again every 30 minutes, at most 12 times; postponed or
+    cancelled, the workflow ends and a later fixtures run picks up the new date.
+    """
+
+    @workflow.run
+    async def run(self, input: PostMatchInput) -> PostMatchResult:
+        kickoff = input.start_timestamp
+        check_at = kickoff + CHECK_AFTER_KICKOFF.total_seconds()
+        late_checks = 0
+        while True:
+            delay = check_at - workflow.now().timestamp()
+            if delay > 0:
+                await workflow.sleep(delay)
+            status = await workflow.execute_activity_method(
+                SofascoreActivities.match_status,
+                input.event_id,
+                start_to_close_timeout=timedelta(minutes=2),
+                retry_policy=SOFASCORE_RETRY_POLICY,
+            )
+            if status.status == "finished":
+                ingest = await workflow.execute_child_workflow(
+                    MatchIngestWorkflow.run,
+                    MatchIngestInput(input.event_id),
+                    id=f"{workflow.info().workflow_id}-ingest",
+                )
+                return PostMatchResult(input.event_id, "ingested", ingest)
+            if status.status in ENDED_WITHOUT_PLAY:
+                return PostMatchResult(input.event_id, status.status)
+            if status.status == "notstarted" and status.start_timestamp != kickoff:
+                workflow.logger.info(
+                    "Match %s moved: kickoff %s, was %s",
+                    input.event_id,
+                    status.start_timestamp,
+                    kickoff,
+                )
+                kickoff = status.start_timestamp
+                check_at = kickoff + CHECK_AFTER_KICKOFF.total_seconds()
+                late_checks = 0
+                continue
+            late_checks += 1
+            if late_checks > MAX_LATE_CHECKS:
+                workflow.logger.warning(
+                    "Match %s still %s after %d checks", input.event_id, status.status, late_checks
+                )
+                return PostMatchResult(input.event_id, "gave_up")
+            check_at = workflow.now().timestamp() + LATE_CHECK_INTERVAL.total_seconds()
+
+
+@workflow.defn
+class FixturesWorkflow:
+    """Start one `PostMatchWorkflow` per fixture kicking off within the horizon; run daily by
+    a Schedule (ADR 5).
+
+    Post-match workflows are keyed by Match (`post-match-<event id>`) and outlive this run, so
+    a fixture read on several days starts one workflow.
+    """
+
+    @workflow.run
+    async def run(self, input: FixturesInput) -> FixturesResult:
+        fixtures = await workflow.execute_activity_method(
+            SofascoreActivities.upcoming_fixtures,
+            input,
+            start_to_close_timeout=timedelta(minutes=5),
+            retry_policy=SOFASCORE_RETRY_POLICY,
+        )
+        horizon = workflow.now() + timedelta(days=input.horizon_days)
+        started: list[int] = []
+        already_scheduled: list[int] = []
+        beyond_horizon = 0
+        for fixture in fixtures:
+            if fixture.start_timestamp > horizon.timestamp():
+                beyond_horizon += 1
+                continue
+            try:
+                await workflow.start_child_workflow(
+                    PostMatchWorkflow.run,
+                    PostMatchInput(fixture.event_id, fixture.start_timestamp),
+                    id=f"post-match-{fixture.event_id}",
+                    parent_close_policy=workflow.ParentClosePolicy.ABANDON,
+                )
+                started.append(fixture.event_id)
+            except WorkflowAlreadyStartedError:
+                already_scheduled.append(fixture.event_id)
+        return FixturesResult(started, already_scheduled, beyond_horizon)
