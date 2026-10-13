@@ -1,6 +1,6 @@
 """Workflow and activity inputs and results."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -163,6 +163,10 @@ class SeasonBackfillResult:
     # Over the season's event pages and every ingested Match.
     raw_responses: int
     reused: int
+    # Sofascore answered a Match with its bot challenge: the season stopped there, and these
+    # Matches were never started. A re-run picks them up.
+    challenged: bool = False
+    not_attempted_event_ids: list[int] = field(default_factory=list[int])
 
 
 @dataclass(frozen=True)

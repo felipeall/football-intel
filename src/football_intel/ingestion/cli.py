@@ -119,6 +119,11 @@ async def backfill(
         )
         if season.failed_event_ids:
             print(f"  Failed Matches: {', '.join(map(str, season.failed_event_ids))}")
+        if season.challenged:
+            print(
+                f"  Stopped: Sofascore's bot challenge; {len(season.not_attempted_event_ids)} "
+                "Matches not attempted. Re-run once it has lifted."
+            )
 
 
 async def schedule_post_match(settings: Settings) -> None:

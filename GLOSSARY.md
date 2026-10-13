@@ -10,6 +10,7 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Raw Response** — The untouched payload returned by a source for one request, stored before any parsing so it can be reprocessed without re-scraping.
 - **Fetch Attempt** — One upstream request a source interface handled, and how it ended: answered (with a status code), timed out, failed in transport, rejected by the open circuit breaker, or answered from a fresh stored Raw Response. Unlike Raw Responses, Fetch Attempts include requests that got no answer; per-source success rates are computed from them.
 - **Freshness Window** — How long a stored Raw Response answers its request instead of the source, set per source. Failure responses never answer; a forced refresh skips the window.
+- **Challenge** — A source refusing requests until a human solves a captcha, rather than refusing one request. Sofascore's is a 403 whose body says `"reason": "challenge"`. It lasts hours, so a challenged request is not retried and a backfill stops at the first one.
 - **Source Record** — A source's own representation of an entity (player, team, match), keyed by that source's ID.
 - **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source.
 - **Identity Resolution** — The process of linking Source Records to a Player: deterministic rules, then fuzzy scoring, then an LLM judge, then human review below a confidence threshold.
