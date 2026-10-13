@@ -8,15 +8,17 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ChildWorkflowError
 
 with workflow.unsafe.imports_passed_through():
-    from football_intel.ingestion.activities import TransfermarktActivities
+    from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
     from football_intel.ingestion.models import (
         CompetitionClubsInput,
         CompetitionSquadsInput,
         CompetitionSquadsResult,
+        MatchIngestInput,
+        MatchIngestResult,
         SquadIngestInput,
         SquadIngestResult,
     )
-    from football_intel.sources.transfermarkt import NON_RETRYABLE_ERRORS
+    from football_intel.sources import sofascore, transfermarkt
 
 # Polite backoff: 10s, 20s, 40s, 80s between the five attempts. A failed attempt is retried
 # whole; Raw Responses it stored stay, as a record of what the source answered.
@@ -25,7 +27,16 @@ TRANSFERMARKT_RETRY_POLICY = RetryPolicy(
     backoff_coefficient=2.0,
     maximum_interval=timedelta(minutes=5),
     maximum_attempts=5,
-    non_retryable_error_types=list(NON_RETRYABLE_ERRORS),
+    non_retryable_error_types=list(transfermarkt.NON_RETRYABLE_ERRORS),
+)
+# The same backoff for Sofascore. A retried Match reuses the Raw Responses its failed attempts
+# stored within the Freshness Window, so it only fetches what is still missing.
+SOFASCORE_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=10),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(minutes=5),
+    maximum_attempts=5,
+    non_retryable_error_types=list(sofascore.NON_RETRYABLE_ERRORS),
 )
 
 
@@ -84,4 +95,19 @@ class CompetitionSquadsWorkflow:
                 for club_id, result in zip(clubs.club_ids, results, strict=True)
                 if result is None
             ],
+        )
+
+
+@workflow.defn
+class MatchIngestWorkflow:
+    """Store one finished Sofascore Match as Raw Responses."""
+
+    @workflow.run
+    async def run(self, input: MatchIngestInput) -> MatchIngestResult:
+        # About 70 requests at the default one per second.
+        return await workflow.execute_activity_method(
+            SofascoreActivities.ingest_match,
+            input,
+            start_to_close_timeout=timedelta(minutes=10),
+            retry_policy=SOFASCORE_RETRY_POLICY,
         )

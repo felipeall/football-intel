@@ -8,6 +8,7 @@ authors = [{ name = "Felipe Allegretti" }]
 requires-python = ">=3.13"
 dependencies = [
     "alembic==1.20.0",
+    "curl-cffi==0.16.3",
     "httpx>=0.28.1,<1",
     "psycopg[binary]==3.3.6",
     "pydantic-settings==2.15.0",
@@ -78,4 +79,16 @@ ignore_imports = [
 name = "Raw Response recording is source-neutral"
 type = "forbidden"
 source_modules = ["football_intel.sources.recording"]
-forbidden_modules = ["football_intel.sources.transfermarkt", "transfermarkt_api"]
+forbidden_modules = [
+    "football_intel.sources.sofascore",
+    "football_intel.sources.transfermarkt",
+    "transfermarkt_api",
+]
+
+[[tool.importlinter.contracts]]
+name = "curl_cffi only behind the impersonating transport (ADR 14)"
+type = "forbidden"
+source_modules = ["football_intel"]
+forbidden_modules = ["curl_cffi"]
+unmatched_ignore_imports_alerting = "none"
+ignore_imports = ["football_intel.sources.impersonation -> curl_cffi"]
