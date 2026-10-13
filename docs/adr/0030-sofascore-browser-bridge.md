@@ -23,19 +23,38 @@ The homepage itself serves Sofascore's captcha page (`/captcha.html?redirectUrl=
 - **The installed Chrome, headless.** Scrapling's stealth session with `real_chrome=True`, headless, reported the Turnstile solved. The page never left `captcha.html`, no token was issued, and in-page API calls were challenged. #32 recorded the same for plain Playwright, headless and headed. Stealth patches matter more than headed or headless.
 
 ### What does get past it (probed 2026-10-13)
-A stealth browser that solves the Turnstile itself. Two setups passed, both with Scrapling 0.4.15 `StealthySession(solve_cloudflare=True)` and a scratch profile, on the developer's Mac:
+A stealth browser that passes the Turnstile, followed by `fetch()` calls made from inside its page. The same token, sent from `curl_cffi` straight after, is still challenged: requests have to come from the browser that solved the captcha.
 
-- **Headless, with patchright's bundled Chromium** (Chrome for Testing 153, `executable_path`): solved in 35 seconds.
-- **Headed, with the installed Chrome** (`real_chrome=True`, `headless=False`): solved in 16 seconds.
+Every option was run the same way, one at a time and 20–25 seconds apart, each with a fresh profile:
 
-In both runs:
+1. load `captcha.html`;
+2. wait up to 45 seconds for the redirect to `/`;
+3. call `/event/{id}`, `/event/{id}/lineups` and `/unique-tournament/17/seasons` from inside the page.
 
-1. It loaded `captcha.html`.
-2. Scrapling clicked the Turnstile checkbox.
-3. The page redirected to `/` within 16 seconds, with a `sofa_captcha` cookie (`exp` 60 minutes ahead).
-4. `fetch()` calls made from inside that page answered **200** for `/event/{id}`, `/event/{id}/lineups` and `/unique-tournament/17/seasons`, with or without the `x-captcha` and `x-requested-with` headers.
+An option passes when all three answer 200. A solve issues a `sofa_captcha` cookie whose `exp` is 60 minutes ahead. In-page calls answer 200 with or without the `x-captcha` and `x-requested-with` headers.
 
-The same token, sent from `curl_cffi` straight after, was still challenged. Requests have to come from the browser that solved the captcha.
+**On the developer's Mac (macOS, arm64):**
+
+| Option | Headless | Headed |
+|---|---|---|
+| **camoufox 0.5.8** (anti-detect Firefox), no solver | **5/5** (4–29 s) | 1/1 |
+| seleniumbase 4.56 UC mode | 3/4 (16–20 s) | 1/1 |
+| Scrapling 0.4.15 `StealthySession(solve_cloudflare=True)` on patchright Chromium (#206, tunjayoff) | 1/4 | 1/1 |
+| patchright 1.63, no solver | 0/1 | 1/1 (14 s) |
+| zendriver 0.17 / nodriver 0.50 with `verify_cf()` | 0/1 each | 1/1 each |
+| Playwright 1.62, no solver | 0/1 | — |
+| Botasaurus 4.0 (`bypass_cloudflare=True`) | 0/1 ("Cloudflare has detected us") | 0/1 |
+| Installed Chrome with Scrapling (`real_chrome=True`) | 0/1 | 1/1 (16 s) |
+
+With a headed browser, the Turnstile passes on its own for almost every option. Headless, only camoufox passed reliably, and it never needed a checkbox click.
+
+**Soak.** One camoufox headless session made 450 in-page API calls over 15 minutes at 0.5 requests per second: season lists, event lists, events, lineups, shotmaps and average positions. All 450 answered 200, and no challenge came back.
+
+**In a Linux container (Debian bookworm, arm64, Docker Desktop):**
+- camoufox headless failed 2/2.
+- Scrapling on patchright Chromium failed 1/1, although tunjayoff reports this setup working in its image.
+- seleniumbase's UC driver does not start on Linux arm64.
+- Runs under a virtual display (camoufox `headless="virtual"`, with and without `geoip`) failed before reaching Sofascore. Their cause was not diagnosed, so Linux with a virtual display remains untested.
 
 ### Prior art
 - **tunjayoff/sofascore_scraper PR #206** ("Turnstile and request-layer hardening", closed unmerged when its owner ended the project). It ran a long-lived "bridge" browser (Scrapling `StealthySession` on patchright Chromium, persistent profile) and sent every API request as an in-page `fetch()`. From its soak runs:
@@ -58,38 +77,41 @@ The same token, sent from `curl_cffi` straight after, was still challenged. Requ
 - **#34 / PR #35.** A challenge now raises `ChallengeError`. It is not retried, and a backfill stops at the first one instead of spending every Match's attempts against it.
 
 ## Decision (proposed)
-- **A Browser Bridge is the Sofascore backend.** It is one long-lived headless stealth browser per worker: Scrapling `StealthySession` on patchright's bundled Chromium, `solve_cloudflare=True`, a persistent profile under `data/`. It does not use the installed Chrome, which fails headless. It replaces `curl_cffi` impersonation for Sofascore only. It sits behind the common source interface as the `httpx` transport backend that `SourceInterface` already accepts (`backend=`). The rate limit, circuit breaker, Raw Response recording and Fetch Attempts therefore apply unchanged, and the activities and parsers do not change.
-- **Every Sofascore request is an in-page `fetch()`** from a `www.sofascore.com` page that has a Captcha Token. The fetch uses `cache: "no-store"` and sends the web app's `x-captcha` and `x-requested-with` headers. The result goes back through the transport as an ordinary `httpx.Response`, so it is stored as a Raw Response like any other answer.
-- **Solving:**
-  - The bridge solves on launch, when the API answers `challenge` or `jwt:*`, and in the background about 15 minutes before the token's `exp`.
-  - Before a re-solve it clears `sofa_captcha`.
-  - After a failed solve it backs off 180, 180, 360, then 600 seconds, and it loads `captcha.html` at most 8 times in any hour.
+- **A Browser Bridge is the Sofascore backend.**
+  - It is one long-lived **camoufox** session, headless, with a persistent profile under `data/`. It runs **on the developer's Mac**.
+  - It replaces `curl_cffi` impersonation for Sofascore only.
+  - It sits behind the common source interface as the `httpx` transport backend that `SourceInterface` already accepts (`backend=`). The rate limit, circuit breaker, Raw Response recording and Fetch Attempts therefore apply unchanged, and the activities and parsers do not change.
+- **The ingestion worker runs on the host.** It starts with `uv run`, and the compose `worker` service is removed. Temporal, Postgres and the rest of the stack stay in compose. ADR 22 already keeps ingestion on the developer's machine. A worker on the host, rather than a separate bridge process, keeps everything in one process with nothing new to deploy. Transfermarkt runs in the same worker unchanged.
+- **Every Sofascore request is an in-page `fetch()`** from a `www.sofascore.com` page that has a Captcha Token. The fetch uses `cache: "no-store"`. The result goes back through the transport as an ordinary `httpx.Response`, so it is stored as a Raw Response like any other answer.
+- **Solving.** camoufox passes the Turnstile without a solver: the bridge loads `captcha.html` and waits for the redirect.
+  - The bridge solves on launch, when the API answers `challenge` or `jwt:*`, and about 15 minutes before the token's `exp`.
+  - Before a re-solve it clears `sofa_captcha`, because `captcha.html` redirects without issuing a new token while a cookie is present.
+  - After a failed solve it backs off 180, 180, 360, then 600 seconds, and it loads `captcha.html` at most 8 times in any hour (#206's limits).
   - While a solve is backing off, a request answers `ChallengeError` without being sent, so a backfill stops as PR #35 does today.
-- **Where it runs.** The bridge runs in the worker container, headless, with no display. tunjayoff's Docker image does the same in production. The implementation first verifies that Turnstile passes in Linux Chromium in our container. If it does not, there are two fallbacks:
-  - a headed browser under Xvfb;
-  - a bridge on the host, which the worker reaches over a local HTTP port. ADR 22 keeps ingestion on the developer's machine, so this is available.
+- **Fallback.** If camoufox stops passing, seleniumbase UC mode on the host is next (3/4 headless). The last resort is a headed browser, which passes with almost every option.
 - **Recycling.** The bridge restarts its browser, keeping the same profile, at a memory ceiling or a maximum age, and only while the token has at least 10 minutes left.
 - **Unchanged:**
   - Sofascore's rate limit stays at 0.5 requests per second (ADR 4).
   - No scraped data is committed or redistributed.
   - Transfermarkt and Understat do not change.
 - **Amendments:**
-  - ADR 4 gains an exception: for Sofascore, the platform solves the source's human-verification challenge automatically, at polite rates.
-  - ADR 14's "Playwright as a fallback for sources that require JavaScript" becomes "a headless stealth browser for Sofascore, whose API requires a captcha-bound session".
+  - ADR 4 gains an exception: for Sofascore, the platform passes the source's human-verification challenge with an anti-detect browser, at polite rates.
+  - ADR 14's "Playwright as a fallback for sources that require JavaScript" becomes "an anti-detect browser (camoufox) for Sofascore, whose API requires a captcha-bound session".
 
 ## Consequences
-- **Sofascore stays the primary source of stats and spatial data (ADR 3)**, at the cost of a browser per worker. The worker image grows by a Chromium build (about 190 MB) and its system libraries. Memory grows by about 0.5–2 GiB.
-- **New pinned dependencies:** `scrapling[fetchers]` and `patchright`. Turnstile changes break the solver without warning. The fix is a Scrapling bump, and #206's pinned-version tests are the model for catching it.
+- **Sofascore stays the primary source of stats and spatial data (ADR 3)**, at the cost of one Firefox process on the host. camoufox's browser is downloaded once with `camoufox fetch`, and memory grows by about 0.5–2 GiB.
+- **Ingestion only runs where the bridge runs.** The worker leaves compose for the host, so `docker compose up` alone no longer ingests. Moving ingestion to a server (ADR 22) would need a browser that passes on Linux, which is unverified today.
+- **New pinned dependency:** `camoufox`, plus the Firefox build it fetches. A change to Turnstile or to camoufox's fingerprints can stop it passing without warning. The failure is loud (`ChallengeError`). The fix is a version bump or the fallback, and #206's pinned-version tests are the model for catching it.
 - **Throughput:**
   - Requests are serialised through one page. 0.5 requests per second is well below what the page can do, so the rate limit, not the bridge, sets the pace.
-  - A solve costs 5–20 seconds about once an hour.
+  - A solve costs 5–30 seconds about once an hour.
   - A challenge wall that solving cannot pass stops ingestion through `ChallengeError` (PR #35) instead of burning attempts.
-- **Terms of use.** Solving a site's bot check automatically very likely breaches Sofascore's terms of use, more directly than impersonating a browser's TLS. That is the main cost of this decision and the reason it needs explicit acceptance. If it is not accepted, the alternatives are:
+- **Terms of use.** Solving a site's bot check automatically very likely breaches Sofascore's terms of use, more directly than impersonating a browser's TLS, even though camoufox passes without clicking the checkbox. That is the main cost of this decision and the reason it needs explicit acceptance. If it is not accepted, the alternatives are:
   - ingest Sofascore only while the challenge happens to lift, as on 2026-10-13 16:26–16:46 UTC;
   - drop Sofascore and take spatial data from another source under a new ADR 3 decision.
 - **Tests.** Tests keep stubbing the transport. The bridge's own logic (solve backoff, refresh timing, the 8-loads-per-hour cap, held-back requests) is unit-tested with a fake page, as #206 did.
 
 ## Open questions for the implementation
-1. Does Turnstile pass headless in Linux Chromium in the worker container? It was probed only on macOS. tunjayoff reports that it passes in its Docker image.
-2. Does the challenge come back with a valid token after enough volume, as it did after about 1,300 tokenless requests? A soak at 0.5 requests per second for several hours answers it.
-3. How often does a solve fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
+1. Does a camoufox session last across token expiry? The soak ran for 15 minutes, and tokens last 60. A soak of several hours at 0.5 requests per second answers this, and also whether volume brings the challenge back, as it did after about 1,300 tokenless requests.
+2. How often does a solve fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
+3. Does any browser pass in Linux under a virtual display? Only this would move ingestion off the host. It is not needed while ADR 22 keeps ingestion local.
