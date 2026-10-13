@@ -12,7 +12,12 @@ from football_intel.sources.recording import RecordingTransport, ReplayTransport
 SOURCE = "sofascore"
 
 # Temporal does not retry these: asking again cannot change the answer.
-NON_RETRYABLE_ERRORS = ("MatchNotFound", "MatchNotFinished", "RawResponseMissingError")
+NON_RETRYABLE_ERRORS = (
+    "MatchNotFound",
+    "MatchNotFinished",
+    "SeasonNotFound",
+    "RawResponseMissingError",
+)
 
 
 def recording_transport(

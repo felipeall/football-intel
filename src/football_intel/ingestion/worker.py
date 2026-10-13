@@ -9,8 +9,10 @@ from temporalio.worker import Worker
 from football_intel.config import Settings
 from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
 from football_intel.ingestion.workflows import (
+    BackfillWorkflow,
     CompetitionSquadsWorkflow,
     MatchIngestWorkflow,
+    SeasonBackfillWorkflow,
     SquadIngestWorkflow,
 )
 from football_intel.sources import sofascore
@@ -32,11 +34,20 @@ async def run_worker(settings: Settings) -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
-        workflows=[SquadIngestWorkflow, CompetitionSquadsWorkflow, MatchIngestWorkflow],
+        workflows=[
+            SquadIngestWorkflow,
+            CompetitionSquadsWorkflow,
+            MatchIngestWorkflow,
+            SeasonBackfillWorkflow,
+            BackfillWorkflow,
+        ],
         activities=[
             activities.ingest_club_squad,
             activities.ingest_competition_clubs,
             match_activities.ingest_match,
+            match_activities.tournament_seasons,
+            match_activities.season_matches,
+            match_activities.complete_matches,
         ],
     )
     await worker.run()

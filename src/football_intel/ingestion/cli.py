@@ -11,16 +11,19 @@ from temporalio.client import Client
 from football_intel.config import Settings
 from football_intel.fetch_attempts import FetchAttemptStore, SuccessRate
 from football_intel.ingestion.models import (
+    BackfillInput,
     CompetitionSquadsInput,
     MatchIngestInput,
     SquadIngestInput,
     SquadIngestResult,
 )
 from football_intel.ingestion.workflows import (
+    BackfillWorkflow,
     CompetitionSquadsWorkflow,
     MatchIngestWorkflow,
     SquadIngestWorkflow,
 )
+from football_intel.sources.sofascore.seasons import PREMIER_LEAGUE as SOFASCORE_PREMIER_LEAGUE
 from football_intel.sources.transfermarkt.competitions import PREMIER_LEAGUE
 
 
@@ -86,6 +89,31 @@ async def ingest_match(settings: Settings, event_id: int, refresh: bool) -> None
         f"Match {result.event_id} ({result.name}): {result.players} players, "
         f"{result.raw_responses} Raw Responses stored, {result.reused} reused ({source})"
     )
+
+
+async def backfill(settings: Settings, year: str | None, refresh: bool, concurrency: int) -> None:
+    client = await _client(settings)
+    suffix = f"-{year.replace('/', '-')}" if year else ""
+    result = await client.execute_workflow(
+        BackfillWorkflow.run,
+        BackfillInput(
+            tournament_id=SOFASCORE_PREMIER_LEAGUE,
+            year=year,
+            refresh=refresh,
+            max_concurrent_matches=concurrency,
+        ),
+        id=f"backfill-{SOFASCORE_PREMIER_LEAGUE}{suffix}",
+        task_queue=settings.temporal_task_queue,
+    )
+    for season in result.seasons:
+        print(
+            f"Season {season.season.year}: {season.matches} finished Matches, "
+            f"{season.already_complete} already complete, {season.ingested} ingested, "
+            f"{len(season.failed_event_ids)} failed; "
+            f"{season.raw_responses} Raw Responses stored, {season.reused} reused"
+        )
+        if season.failed_event_ids:
+            print(f"  Failed Matches: {', '.join(map(str, season.failed_event_ids))}")
 
 
 SUCCESS_RATE_COLUMNS = (
@@ -176,6 +204,18 @@ def main() -> None:
     match.add_argument("event_id", type=int, help="Sofascore event ID, e.g. 16363874")
     match.add_argument("--refresh", action="store_true", help=refresh_help)
 
+    backfill_parser = commands.add_parser(
+        "backfill",
+        help="store every finished Premier League Match of the last three seasons from Sofascore",
+    )
+    backfill_parser.add_argument(
+        "--season", help='only this season, as Sofascore writes it, e.g. "24/25"'
+    )
+    backfill_parser.add_argument("--refresh", action="store_true", help=refresh_help)
+    backfill_parser.add_argument(
+        "--concurrency", type=int, default=3, help="Matches in flight at once (default 3)"
+    )
+
     today = datetime.now(UTC).date()
     rates = commands.add_parser(
         "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
@@ -199,6 +239,8 @@ def main() -> None:
     settings = Settings()
     if args.command == "success-rates":
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
+    elif args.command == "backfill":
+        asyncio.run(backfill(settings, args.season, args.refresh, args.concurrency))
     elif args.command == "ingest-match":
         asyncio.run(ingest_match(settings, args.event_id, args.refresh))
     elif args.command == "ingest-squad":

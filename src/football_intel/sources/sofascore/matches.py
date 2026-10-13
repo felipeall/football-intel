@@ -5,8 +5,8 @@ from typing import Any
 
 import httpx
 
-BASE_URL = "https://www.sofascore.com/api/v1"
-TIMEOUT_SECONDS = 30.0
+from football_intel.sources.sofascore.api import client, raise_for_failure
+
 # Per Match, after the event and its lineups (per-player statistics: Appearances): the
 # shotmap (Shots) and average positions. Per player who appeared: heatmap and rating
 # breakdown (Actions).
@@ -20,14 +20,6 @@ class MatchNotFound(Exception):
 
 class MatchNotFinished(Exception):
     """The event exists but is not finished, so its data is not final."""
-
-
-class UpstreamError(Exception):
-    """Sofascore refused or failed a request (403, 429, 5xx…). Retryable."""
-
-    def __init__(self, url: httpx.URL, status_code: int) -> None:
-        super().__init__(f"Sofascore answered {status_code} for {url.path}")
-        self.status_code = status_code
 
 
 @dataclass(frozen=True)
@@ -49,17 +41,14 @@ async def fetch_match(transport: httpx.AsyncBaseTransport, event_id: int) -> Mat
     few minutes played): it is kept and the Match goes on.
     """
     statuses: dict[str, int] = {}
-    async with httpx.AsyncClient(
-        transport=transport, base_url=BASE_URL, timeout=TIMEOUT_SECONDS
-    ) as client:
+    async with client(transport) as api:
 
         async def get(path: str, required: bool = False) -> httpx.Response:
-            response = await client.get(path)
+            response = await api.get(path)
             statuses[path] = response.status_code
+            raise_for_failure(response)
             if response.status_code == 404 and required:
                 raise MatchNotFound(f"Sofascore has no {path}")
-            if response.is_error and response.status_code != 404:
-                raise UpstreamError(response.request.url, response.status_code)
             return response
 
         match = f"/event/{event_id}"
