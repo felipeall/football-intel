@@ -20,16 +20,25 @@ from football_intel.ingestion.workflows import (
 from football_intel.sources import sofascore
 from football_intel.sources.impersonation import impersonating_backend
 from football_intel.sources.interface import SourceInterface
+from football_intel.sources.sofascore.captcha import (
+    CaptchaTransport,
+    TokenProvider,
+    camoufox_solver,
+)
 from football_intel.sources.transfermarkt import SOURCE, is_upstream_failure
 
 
 async def run_worker(settings: Settings) -> None:
     client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
     transfermarkt = SourceInterface(SOURCE, settings.transfermarkt, is_failure=is_upstream_failure)
+    # One Token Provider per worker: every Sofascore request shares its Captcha Token.
+    captcha = TokenProvider(
+        camoufox_solver(settings.sofascore.captcha_headless, settings.sofascore.proxy)
+    )
     sofascore_source = SourceInterface(
         sofascore.SOURCE,
         settings.sofascore,
-        backend=lambda: impersonating_backend(settings.sofascore),
+        backend=lambda: CaptchaTransport(impersonating_backend(settings.sofascore), captcha),
     )
     activities = TransfermarktActivities(settings.database_url, transfermarkt)
     match_activities = SofascoreActivities(settings.database_url, sofascore_source)
