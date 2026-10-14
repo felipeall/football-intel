@@ -15,8 +15,9 @@ class UpstreamError(Exception):
 
 
 class ChallengeError(UpstreamError):
-    """Sofascore answered with its bot challenge (403, `"reason": "challenge"`). Not retried:
-    the challenge lasts hours and only a solved captcha lifts it."""
+    """Sofascore answered with its bot challenge (403, `"reason": "challenge"` or `"jwt:…"`)
+    even after the Captcha Token was renewed (ADR 30). Not retried: no token could be
+    obtained, so asking again cannot change the answer."""
 
 
 def client(transport: httpx.AsyncBaseTransport) -> httpx.AsyncClient:
@@ -35,9 +36,18 @@ def raise_for_failure(response: httpx.Response) -> None:
 
 def is_challenge(response: httpx.Response) -> bool:
     """Whether the response is Sofascore's bot challenge."""
+    return challenge_reason(response) is not None
+
+
+def challenge_reason(response: httpx.Response) -> str | None:
+    """`challenge` when Sofascore wants a Captcha Token, `jwt:<why>` when it rejected the one
+    sent (expired, say); None for any other answer (ADR 30)."""
     if response.status_code != 403:
-        return False
+        return None
     try:
-        return response.json()["error"]["reason"] == "challenge"
+        reason = response.json()["error"]["reason"]
     except (ValueError, KeyError, TypeError):
-        return False
+        return None
+    if isinstance(reason, str) and (reason == "challenge" or reason.startswith("jwt")):
+        return reason
+    return None

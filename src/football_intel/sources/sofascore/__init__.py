@@ -22,6 +22,9 @@ class SofascorePolicy(SourcePolicy):
 
     requests_per_second: float = Field(default=0.5, gt=0)
     breaker_cooldown_seconds: float = Field(default=900.0, gt=0)
+    # The browser that obtains Captcha Tokens (ADR 30). Headed by default: in Linux only a
+    # headed browser, under Xvfb, passes the Turnstile. Headless passes on macOS.
+    captcha_headless: bool = False
 
 
 # Temporal does not retry these: asking again cannot change the answer.

@@ -1,6 +1,6 @@
 # 4. Scraping posture: resilient, polite, no redistribution
 
-Status: Accepted — 2026-10-11
+Status: Accepted — 2026-10-11. Amended by ADR 30 (Sofascore's captcha token).
 
 ## Decision
 - Scrapers are the core of ingestion, implemented behind a common source interface.

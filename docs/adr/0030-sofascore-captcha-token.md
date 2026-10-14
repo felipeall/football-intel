@@ -1,6 +1,6 @@
 # 30. Sofascore through a captcha token that a browser obtains
 
-Status: Proposed — 2026-10-13, revised 2026-10-14. Would amend ADR 4 (scraping posture) and ADR 14 (access method) for Sofascore only.
+Status: Accepted — 2026-10-14 (proposed 2026-10-13). Amends ADR 4 (scraping posture) and ADR 14 (access method) for Sofascore only.
 
 ## Context
 
@@ -93,20 +93,22 @@ Neither soak saw the challenge come back.
   - #574 notes that Turnstile responses are bound to the sitekey, not to the browser that produced them. That is the observation this ADR builds on.
 - **#34 / PR #35.** A challenge now raises `ChallengeError`. It is not retried, and a backfill stops at the first one instead of spending every Match's attempts against it.
 
-## Decision (proposed)
+## Decision
 - **Sofascore requests stay on `curl_cffi`.** `ImpersonatingTransport` (ADR 14) adds an `X-Captcha` header with the current Captcha Token. The rate limit, circuit breaker, Raw Response recording, Fetch Attempts, activities and parsers do not change.
 - **A Token Provider supplies the Captcha Token.** It lives in the worker process and is shared by every Sofascore request.
-  1. It launches **camoufox, headed, under Xvfb with a 1920×1080 screen**, and loads `captcha.html`. camoufox passes the Turnstile without a solver.
+  1. It launches **camoufox, headed, under Xvfb with a 1920×1080 screen**, with `geoip=True`, and loads `captcha.html`. camoufox passes the Turnstile without a solver. `geoip` sets the browser's timezone and locale from the exit IP. In the worker image, a UTC browser on a Spanish IP got the interactive checkbox instead, and failed. The same image with the timezone matching the IP passed.
   2. It intercepts the page's POST to `/api/v1/token/captcha`, aborts it, and closes the browser.
   3. It POSTs the Turnstile response from `curl_cffi`, through the same impersonation as every API request, so the token's `f` claim matches the client that will use it.
-- **When it obtains a token:**
-  - Before obtaining one, it makes one plain request. If that already answers 200 (the challenge has lifted), it runs without a token and launches no browser.
-  - It obtains one on the first request, about 15 minutes before `exp`, and when the API answers `challenge` or `jwt:*`.
-  - After a failed attempt it backs off 180, 180, 360, then 600 seconds. It loads `captcha.html` at most 8 times in any hour (#206's limits).
-  - While it is backing off, a request answers `ChallengeError` without being sent, so a backfill stops as PR #35 does today.
-- **Where it runs.** In the worker container. The image gains camoufox's Firefox (`camoufox fetch`), Xvfb, `xauth` and fonts. The browser runs for about 10 seconds an hour, so there is no long-lived page and no browser to recycle. ADR 22 keeps ingestion on the developer's machine. Moving it to a server stays possible, apart from the IP question below.
+- **When it obtains a token** (`CaptchaTransport`, between the source interface and `ImpersonatingTransport`):
+  - **Only when challenged.** A request goes with the current token, or without one when there is none. When it is answered `challenge` or `jwt:*`, the transport obtains a token and sends the request once more. A request without a token is therefore the plain probe: while Sofascore does not challenge, no browser is launched.
+  - **Dropped near expiry.** A token is dropped 5 minutes before its `exp`, and the next request goes without one. It is not refreshed ahead of time: re-checking whether the challenge has lifted costs one request an hour.
+  - **Shared.** Requests challenged at the same time share one attempt.
+  - **Backoff.** After a failed attempt it backs off 180, 180, 360, then 600 seconds, and it makes at most 8 attempts in any hour (#206's limits). While it is backing off, the challenged answer goes back to the caller, which raises `ChallengeError`, so a backfill stops as PR #35 does today.
+  - **Not rate-limited or recorded.** The exchange and the resend bypass the rate limit, and are not recorded as Raw Responses: the exchange's answer is the token itself, and there are at most a few of each an hour. The recorded answer is the request's last one.
+  - **Configuration.** `SOFASCORE__CAPTCHA_HEADLESS` (default false) runs the browser headless where that passes, as on macOS. The browser goes through `SOFASCORE__PROXY` when one is set.
+- **Where it runs.** In the worker container. The image gains camoufox's Firefox (`camoufox fetch`, into a cache owned by the worker user, since camoufox writes there at run time), Xvfb (started by the container's command on display `:99`) and fonts. The browser runs for about 10 seconds an hour, so there is no long-lived page and no browser to recycle. ADR 22 keeps ingestion on the developer's machine. Moving it to a server stays possible, apart from the IP question below.
 - **Fallback.** If camoufox stops passing, the next option is patchright Chromium headed under Xvfb (1/1 in the container). Every headed option passed on macOS.
-- **The token is a secret.** It is held in memory as a `SecretStr`. It never appears in logs, Raw Responses, Fetch Attempts or reprs.
+- **The token is a secret.** It is held in memory as a `SecretStr`, and it never appears in logs, Raw Responses, Fetch Attempts or reprs. camoufox and Playwright are imported only by the Token Provider, which is enforced by an import-linter contract.
 - **Unchanged:**
   - Sofascore's rate limit stays at 0.5 requests per second (ADR 4).
   - No scraped data is committed or redistributed.
@@ -125,7 +127,13 @@ Neither soak saw the challenge come back.
   - drop Sofascore and take spatial data from another source under a new ADR 3 decision.
 - **Tests.** Tests keep stubbing the transport. The Token Provider's logic (refresh timing, backoff, the hourly load cap, the plain probe, held-back requests) is unit-tested with a fake browser and a fake exchange.
 
-## Open questions for the implementation
+## Verified with the implementation (2026-10-14)
+- **On macOS**, the real Token Provider over `ImpersonatingTransport` obtained a token on the first challenged request in about 20 seconds. Three API calls answered 200.
+- **In the worker image**, it obtained a token 3/3, in 7–10 seconds.
+- **Through the worker**, `football-intel ingest-match 16363244`, a Match challenged on 2026-10-13, stored 66 Raw Responses, all 200, with one token obtained.
+- **No leaks.** No Raw Response, Fetch Attempt or log line contains the token.
+
+## Open questions
 1. Does a session hold across token expiry and over several hours? Both soaks ran for 15 minutes, and tokens last 60. A soak of several hours answers it, and also whether volume brings the challenge back with a valid token.
 2. How often does obtaining a token fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
 3. A server's IP. ADR 22 records that datacenter IP ranges are reportedly blocked, and the token's `ip` claim binds it to the exchanging IP. Moving ingestion off the developer's machine may need a residential proxy for both the browser and `curl_cffi`. Their IPs must match.
