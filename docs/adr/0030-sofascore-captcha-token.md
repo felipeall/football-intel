@@ -1,0 +1,132 @@
+# 30. Sofascore through a captcha token that a browser obtains
+
+Status: Proposed — 2026-10-13, revised 2026-10-14. Would amend ADR 4 (scraping posture) and ADR 14 (access method) for Sofascore only.
+
+## Context
+
+### The challenge
+ADR 3 and ADR 14 rest on a probe from 2026-10-11: Sofascore's `www.sofascore.com/api/v1/*` answered 200 to `curl_cffi` with Chrome impersonation. That no longer holds. Sofascore now answers API requests with `403 {"error": {"code": 403, "reason": "challenge"}}` from its own Varnish edge, and this is not a Cloudflare TLS block. Public reports date the challenge for plain clients to about June 2026 (ScraperFC #93). On our IP it has come and gone:
+
+- 2026-10-13, 16:26–16:46 UTC: the #21 backfill fetched about 1,300 requests at about 0.9 requests per second. Then the challenge started.
+- 19:37 UTC, after three idle hours: the first request was challenged. Every request since has been challenged too.
+- 20:10 UTC: `curl_cffi` as `chrome` and as `safari`, a homepage warm-up with `Referer`/`Origin`, plain `curl` and `api.sofascore.com` were all challenged.
+- 2026-10-14, 06:03 UTC: still challenged, about 13.5 hours later (`curl_cffi` as `chrome` and `safari`, plain `curl`).
+
+The homepage itself serves Sofascore's captcha page (`/captcha.html?redirectUrl=…`). It renders a Cloudflare Turnstile widget (sitekey `0x4AAAAAADcoqB6O4KpaoADv`). The solution is POSTed to `/api/v1/token/captcha` (`{"response": <turnstile token>, "provider": "turnstile"}`), which returns a JWT, the Captcha Token. The web app stores it in localStorage `sofa.captcha.token` and in the `sofa_captcha` cookie, and sends it as the `X-Captcha` request header.
+
+### How the Captcha Token is bound
+The Captcha Token is an HS256 JWT with three claims:
+- `exp`: 60 minutes after it is issued.
+- `ip`: the public IP that exchanged it.
+- `f`: a 6-hex-digit fingerprint of **the client that exchanged it**, meaning the one that POSTed the Turnstile response to `/api/v1/token/captcha`. It is not a fingerprint of the browser that solved the widget.
+
+The probes show the difference:
+
+- **A token exchanged by a browser fails from `curl_cffi`.** This covers a hand-solved token, and one from a stealth browser. Both were rejected with `403 challenge`:
+  - `curl_cffi` as `chrome`, `chrome146`, `chrome150` and `safari`, sent as `X-Captcha` or as the `sofa_captcha` cookie, with or without the browser's User-Agent;
+  - plain `curl`.
+
+  The browser that exchanged the token gets 200 for calls made from inside its own page.
+- **A token that `curl_cffi` exchanges works for `curl_cffi`.** A browser solved the widget, and its POST to `/token/captcha` was intercepted and aborted, so the response stayed unused. `curl_cffi` (`impersonate="chrome"`) then POSTed the same `{"response", "provider": "turnstile"}` body itself and got 200 with a token. Plain `curl_cffi` requests carrying that token as `X-Captcha` (or as the cookie) answered **200**. It worked on macOS and, 3 times out of 3, in a Linux container.
+
+  A Turnstile response is bound to the sitekey, not to the browser that produced it. So **a browser is only needed to produce a Turnstile response, about once an hour.** Every API request can stay on `curl_cffi`.
+- **The `x-requested-with` header does not matter.** The web app sends `x-requested-with: sha256(str(unix_time // 1800))[:6]`, which rotates every 30 minutes. It changed nothing, with or without a token, and it is not the `f` claim.
+
+### Which browsers pass the Turnstile (probed 2026-10-13/14)
+Every run was made the same way, one at a time and 20–30 seconds apart, each with a fresh profile:
+
+1. load `captcha.html`;
+2. wait up to 45 seconds for the redirect or for the `/token/captcha` POST;
+3. on macOS, call three API paths from inside the page.
+
+**On the developer's Mac (macOS, arm64):**
+
+| Option | Headless | Headed |
+|---|---|---|
+| **camoufox 0.5.8** (anti-detect Firefox), no solver | **5/5** (4–29 s) | 1/1 |
+| seleniumbase 4.56 UC mode | 3/4 (16–20 s) | 1/1 |
+| Scrapling 0.4.15 `StealthySession(solve_cloudflare=True)` on patchright Chromium (#206, tunjayoff) | 1/4 | 1/1 |
+| patchright 1.63, no solver | 0/1 | 1/1 (14 s) |
+| zendriver 0.17 / nodriver 0.50 with `verify_cf()` | 0/1 each | 1/1 each |
+| Playwright 1.62, no solver | 0/1 | — |
+| Botasaurus 4.0 (`bypass_cloudflare=True`) | 0/1 ("Cloudflare has detected us") | 0/1 |
+| Installed Chrome with Scrapling (`real_chrome=True`) | 0/1 | 1/1 (16 s) |
+
+**In a Linux container (Debian bookworm, arm64, Docker Desktop):**
+
+| Option | Result |
+|---|---|
+| camoufox, headless | 0/3. WebGL reports `null` |
+| camoufox, **headed under Xvfb 1920×1080** (default, `geoip=True`, `os="linux"` with `humanize`) | **3/3** (3–5 s) |
+| patchright Chromium, headless | 0/1 |
+| patchright Chromium, headed under Xvfb 1920×1080 | 1/1 (3 s) |
+| seleniumbase UC | does not start on Linux arm64 |
+
+Headless Linux has no WebGL. That is the signal Turnstile catches, so headed under a full-size virtual display is what passes. The image also had Noto, Liberation and DejaVu fonts, and `TZ=Europe/Madrid`; whether those matter was not isolated. Earlier Xvfb attempts never launched, because `xauth` was missing.
+
+### Soaks
+Both ran at 0.5 requests per second for 450 requests (about 15 minutes), over season lists, event lists, events, lineups, shotmaps and average positions:
+- camoufox headless on macOS, with every call made from inside the page: **450/450** answered 200.
+- In the Linux container, camoufox headed under Xvfb solved once, `curl_cffi` exchanged the response, and every call went through `curl_cffi`: **450/450** answered 200.
+
+Neither soak saw the challenge come back.
+
+### Prior art
+- **tunjayoff/sofascore_scraper PR #206** ("Turnstile and request-layer hardening", closed unmerged when its owner ended the project). It ran a long-lived "bridge" browser (Scrapling `StealthySession` on patchright Chromium, persistent profile) and sent every API request as an in-page `fetch()`. From its soak runs:
+  - Tokens last 3,600 seconds. After expiry the API answers a `jwt:time-out-of-bounds` 403.
+  - It refreshed tokens 15 minutes before `exp`, with at most 3 refresh loads per token.
+  - After a failed solve it waited 180, 180, 360, then 600 seconds.
+  - It loaded `captcha.html` at most 8 times per hour, and gave each solve 15 seconds to redirect (passing solves redirected in 3.4–4.5 seconds).
+  - It cleared the cookie before a re-solve, because `captcha.html` redirects without issuing a new token while a cookie is present.
+- **tunjayoff/sofascore_scraper `main`.** Its released `BrowserBridge` is headless patchright Chromium through Scrapling `StealthySession`, and it sends API calls from inside the page. Its changelog says it "passes the Cloudflare Turnstile challenge on its own" and "runs headless on a desktop and on a display-less server alike". In our probes that setup passed 1/4 headless on macOS and 0/1 headless in Linux.
+- **Botasaurus**, an anti-detect Chromium wrapper.
+  - Sharone-12/sofascore-scraper (October 2026) uses it headless and fetches the API URLs as page navigations.
+  - ScraperFC PR #94 (open since June 2026, unmerged) warms a Botasaurus session on the homepage, then issues in-page XHRs. ScraperFC's own Sofascore scraper (issue #93) has been broken since June.
+- **Crawlora** sells a hosted Sofascore API. ADR 14 rules out paid scraping APIs.
+- **probberechts/soccerdata.**
+  - #835 (May 2025) only gets past TLS fingerprinting, with `tls-requests`, which is what our `curl_cffi` already does.
+  - #955 (July 2026) added a seleniumbase captcha solver, but only for its Selenium readers (WhoScored, FBref).
+  - Its Sofascore reader is still plain HTTP, so it has nothing for this challenge.
+- **camoufox's own tracker.**
+  - "Cloudflare detects camoufox when running in Docker" (#311, merged into the detection tracker #686, which is open): the same script and IP pass on the host and fail in Docker, and the maintainers narrow it to the container's fonts, rendering and display.
+  - `headless="virtual"` started Xvfb with a 1×1 screen (#458).
+  - #574 notes that Turnstile responses are bound to the sitekey, not to the browser that produced them. That is the observation this ADR builds on.
+- **#34 / PR #35.** A challenge now raises `ChallengeError`. It is not retried, and a backfill stops at the first one instead of spending every Match's attempts against it.
+
+## Decision (proposed)
+- **Sofascore requests stay on `curl_cffi`.** `ImpersonatingTransport` (ADR 14) adds an `X-Captcha` header with the current Captcha Token. The rate limit, circuit breaker, Raw Response recording, Fetch Attempts, activities and parsers do not change.
+- **A Token Provider supplies the Captcha Token.** It lives in the worker process and is shared by every Sofascore request.
+  1. It launches **camoufox, headed, under Xvfb with a 1920×1080 screen**, and loads `captcha.html`. camoufox passes the Turnstile without a solver.
+  2. It intercepts the page's POST to `/api/v1/token/captcha`, aborts it, and closes the browser.
+  3. It POSTs the Turnstile response from `curl_cffi`, through the same impersonation as every API request, so the token's `f` claim matches the client that will use it.
+- **When it obtains a token:**
+  - Before obtaining one, it makes one plain request. If that already answers 200 (the challenge has lifted), it runs without a token and launches no browser.
+  - It obtains one on the first request, about 15 minutes before `exp`, and when the API answers `challenge` or `jwt:*`.
+  - After a failed attempt it backs off 180, 180, 360, then 600 seconds. It loads `captcha.html` at most 8 times in any hour (#206's limits).
+  - While it is backing off, a request answers `ChallengeError` without being sent, so a backfill stops as PR #35 does today.
+- **Where it runs.** In the worker container. The image gains camoufox's Firefox (`camoufox fetch`), Xvfb, `xauth` and fonts. The browser runs for about 10 seconds an hour, so there is no long-lived page and no browser to recycle. ADR 22 keeps ingestion on the developer's machine. Moving it to a server stays possible, apart from the IP question below.
+- **Fallback.** If camoufox stops passing, the next option is patchright Chromium headed under Xvfb (1/1 in the container). Every headed option passed on macOS.
+- **The token is a secret.** It is held in memory as a `SecretStr`. It never appears in logs, Raw Responses, Fetch Attempts or reprs.
+- **Unchanged:**
+  - Sofascore's rate limit stays at 0.5 requests per second (ADR 4).
+  - No scraped data is committed or redistributed.
+  - Transfermarkt and Understat do not change.
+- **Amendments:**
+  - ADR 4 gains an exception: for Sofascore, the platform passes the source's human-verification challenge with an anti-detect browser, at polite rates.
+  - ADR 14 gains: Sofascore's `curl_cffi` requests carry a Captcha Token that an anti-detect browser (camoufox) obtains about once an hour.
+
+## Consequences
+- **Sofascore stays the primary source of stats and spatial data (ADR 3).** The request path barely changes: one header.
+- **The worker image grows** by camoufox's Firefox, Xvfb and fonts, a few hundred MB. A browser runs for seconds about once an hour, not continuously.
+- **New pinned dependency:** `camoufox`, plus the Firefox build it fetches. A change to Turnstile, to camoufox's fingerprints, or to how Sofascore binds tokens can break this without warning. The failure is loud (`ChallengeError`). The fix is a version bump or the fallback, and #206's pinned-version tests are the model for catching it.
+- **A cheap way back.** If Sofascore lifts the challenge, the Token Provider's plain probe sees a 200 and stops launching the browser. If Sofascore binds the token to the solving browser again, the decision falls back to sending every call from inside the browser's page. That was verified on macOS (450/450) but not in Linux.
+- **Terms of use.** Passing a site's bot check with an anti-detect browser very likely breaches Sofascore's terms of use, more directly than impersonating a browser's TLS, even though nothing clicks the checkbox. That is the main cost of this decision and the reason it needs explicit acceptance. If it is not accepted, the alternatives are:
+  - ingest Sofascore only while the challenge happens to lift, as on 2026-10-13 16:26–16:46 UTC;
+  - drop Sofascore and take spatial data from another source under a new ADR 3 decision.
+- **Tests.** Tests keep stubbing the transport. The Token Provider's logic (refresh timing, backoff, the hourly load cap, the plain probe, held-back requests) is unit-tested with a fake browser and a fake exchange.
+
+## Open questions for the implementation
+1. Does a session hold across token expiry and over several hours? Both soaks ran for 15 minutes, and tokens last 60. A soak of several hours answers it, and also whether volume brings the challenge back with a valid token.
+2. How often does obtaining a token fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
+3. A server's IP. ADR 22 records that datacenter IP ranges are reportedly blocked, and the token's `ip` claim binds it to the exchanging IP. Moving ingestion off the developer's machine may need a residential proxy for both the browser and `curl_cffi`. Their IPs must match.
+4. Do the fonts and timezone matter in the container, or only headed Xvfb? This only affects the image size.
