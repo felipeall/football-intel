@@ -91,6 +91,8 @@ services:
 
   worker:
     build: .
+    # Reaps the browser processes a failed Captcha Token attempt leaves behind (ADR 30).
+    init: true
     # Per-source policies (TRANSFERMARKT__*, SOFASCORE__*); `environment` wins for the rest.
     env_file:
       - path: .env
