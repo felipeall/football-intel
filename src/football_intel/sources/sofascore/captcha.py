@@ -24,7 +24,7 @@ import time
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import httpx
 from pydantic import SecretStr
@@ -41,7 +41,9 @@ EXPIRY_MARGIN_SECONDS = 300.0
 # Waits after the 1st, 2nd, 3rd and later consecutive failed attempts (#206's soak).
 BACKOFF_SECONDS = (180.0, 180.0, 360.0, 600.0)
 MAX_ATTEMPTS_PER_HOUR = 8
-SOLVE_TIMEOUT_SECONDS = 45.0
+# The whole attempt, solve and exchange: requests waiting on it stay inside the activities'
+# one-minute heartbeat timeout.
+OBTAIN_TIMEOUT_SECONDS = 40.0
 # camoufox passes the Turnstile headed; headless Linux has no WebGL and is caught.
 WINDOW = (1920, 1080)
 
@@ -102,7 +104,7 @@ class TokenProvider:
                 return None
             self._attempts.append(now)
             try:
-                token = await self._obtain(exchange)
+                token = await asyncio.wait_for(self._obtain(exchange), OBTAIN_TIMEOUT_SECONDS)
             except Exception as error:  # a browser can fail in many ways; all mean "no token"
                 self._failures += 1
                 wait = BACKOFF_SECONDS[min(self._failures, len(BACKOFF_SECONDS)) - 1]
@@ -123,17 +125,26 @@ class TokenProvider:
             return token.value
 
     async def _obtain(self, exchange: Exchange) -> CaptchaToken:
-        body = await asyncio.wait_for(self._solve(), SOLVE_TIMEOUT_SECONDS)
+        body = await self._solve()
         response = await exchange(body)
-        if response.status_code != 200:
-            raise TokenUnavailableError(f"the exchange answered {response.status_code}")
-        value = response.json()["token"]
+        try:
+            if response.status_code != 200:
+                raise TokenUnavailableError(f"the exchange answered {response.status_code}")
+            value = response.json()["token"]
+        finally:
+            await response.aclose()
         return CaptchaToken(SecretStr(value), _expiry(value))
 
 
 class CaptchaTransport(httpx.AsyncBaseTransport):
     """Send through `backend` with the current Captcha Token; on a challenge, renew it and
-    send once more."""
+    send once more.
+
+    `backend` is shared by every client of the worker and outlives each one, so closing this
+    transport leaves it open. One session keeps whatever Sofascore pairs with the token (its
+    `sofa_captcha` cookie, say) for every request. Requests waiting on a renewal resend
+    together when the token arrives, one per concurrent activity, past the rate limit.
+    """
 
     def __init__(self, backend: httpx.AsyncBaseTransport, provider: TokenProvider) -> None:
         self._backend = backend
@@ -151,7 +162,7 @@ class CaptchaTransport(httpx.AsyncBaseTransport):
         return await self._send(request, renewed)
 
     async def aclose(self) -> None:
-        await self._backend.aclose()
+        pass  # the shared backend stays open
 
     async def _send(self, request: httpx.Request, token: SecretStr | None) -> httpx.Response:
         if token is None:
@@ -218,10 +229,11 @@ def _expiry(token: str) -> float:
 
 
 def _playwright_proxy(url: str) -> dict[str, str]:
-    """Playwright takes the proxy's credentials apart from its address."""
+    """Playwright takes the proxy's credentials apart from its address, decoded, as
+    `curl_cffi` reads them from the same URL."""
     parts = urlsplit(url)
-    proxy = {"server": f"{parts.scheme}://{parts.hostname}:{parts.port}"}
+    proxy = {"server": f"{parts.scheme}://{parts.netloc.rsplit('@', 1)[-1]}"}
     if parts.username:
-        proxy["username"] = parts.username
-        proxy["password"] = parts.password or ""
+        proxy["username"] = unquote(parts.username)
+        proxy["password"] = unquote(parts.password or "")
     return proxy

@@ -35,10 +35,12 @@ async def run_worker(settings: Settings) -> None:
     captcha = TokenProvider(
         camoufox_solver(settings.sofascore.captcha_headless, settings.sofascore.proxy)
     )
+    # One impersonating session too: the token is bound to the client that exchanged it.
+    sofascore_session = impersonating_backend(settings.sofascore)
     sofascore_source = SourceInterface(
         sofascore.SOURCE,
         settings.sofascore,
-        backend=lambda: CaptchaTransport(impersonating_backend(settings.sofascore), captcha),
+        backend=lambda: CaptchaTransport(sofascore_session, captcha),
     )
     activities = TransfermarktActivities(settings.database_url, transfermarkt)
     match_activities = SofascoreActivities(settings.database_url, sofascore_source)

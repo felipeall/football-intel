@@ -11,6 +11,7 @@ ADR 3 and ADR 14 rest on a probe from 2026-10-11: Sofascore's `www.sofascore.com
 - 19:37 UTC, after three idle hours: the first request was challenged. Every request since has been challenged too.
 - 20:10 UTC: `curl_cffi` as `chrome` and as `safari`, a homepage warm-up with `Referer`/`Origin`, plain `curl` and `api.sofascore.com` were all challenged.
 - 2026-10-14, 06:03 UTC: still challenged, about 13.5 hours later (`curl_cffi` as `chrome` and `safari`, plain `curl`).
+- 2026-10-19: lifted. Plain `curl_cffi` requests answered 200, and the implementation launched no browser.
 
 The homepage itself serves Sofascore's captcha page (`/captcha.html?redirectUrl=…`). It renders a Cloudflare Turnstile widget (sitekey `0x4AAAAAADcoqB6O4KpaoADv`). The solution is POSTed to `/api/v1/token/captcha` (`{"response": <turnstile token>, "provider": "turnstile"}`), which returns a JWT, the Captcha Token. The web app stores it in localStorage `sofa.captcha.token` and in the `sofa_captcha` cookie, and sends it as the `X-Captcha` request header.
 
@@ -94,7 +95,7 @@ Neither soak saw the challenge come back.
 - **#34 / PR #35.** A challenge now raises `ChallengeError`. It is not retried, and a backfill stops at the first one instead of spending every Match's attempts against it.
 
 ## Decision
-- **Sofascore requests stay on `curl_cffi`.** `ImpersonatingTransport` (ADR 14) adds an `X-Captcha` header with the current Captcha Token. The rate limit, circuit breaker, Raw Response recording, Fetch Attempts, activities and parsers do not change.
+- **Sofascore requests stay on `curl_cffi`.** `CaptchaTransport`, between the source interface and `ImpersonatingTransport` (ADR 14), adds an `X-Captcha` header with the current Captcha Token. The worker keeps **one** impersonating session for all Sofascore requests, so whatever Sofascore pairs with the token (its `sofa_captcha` cookie, say) travels with it from one activity to the next. The rate limit, circuit breaker, Raw Response recording, Fetch Attempts, activities and parsers do not change.
 - **A Token Provider supplies the Captcha Token.** It lives in the worker process and is shared by every Sofascore request.
   1. It launches **camoufox, headed, under Xvfb with a 1920×1080 screen**, with `geoip=True`, and loads `captcha.html`. camoufox passes the Turnstile without a solver. `geoip` sets the browser's timezone and locale from the exit IP. In the worker image, a UTC browser on a Spanish IP got the interactive checkbox instead, and failed. The same image with the timezone matching the IP passed.
   2. It intercepts the page's POST to `/api/v1/token/captcha`, aborts it, and closes the browser.
@@ -102,7 +103,8 @@ Neither soak saw the challenge come back.
 - **When it obtains a token** (`CaptchaTransport`, between the source interface and `ImpersonatingTransport`):
   - **Only when challenged.** A request goes with the current token, or without one when there is none. When it is answered `challenge` or `jwt:*`, the transport obtains a token and sends the request once more. A request without a token is therefore the plain probe: while Sofascore does not challenge, no browser is launched.
   - **Dropped near expiry.** A token is dropped 5 minutes before its `exp`, and the next request goes without one. It is not refreshed ahead of time: re-checking whether the challenge has lifted costs one request an hour.
-  - **Shared.** Requests challenged at the same time share one attempt.
+  - **Shared.** Requests challenged at the same time share one attempt. When the token arrives they all resend at once, one per concurrent activity (three in a backfill), past the rate limit.
+  - **Bounded.** An attempt, solve and exchange together, is cut off after 40 seconds. That keeps a request waiting on it inside the activities' one-minute heartbeat timeout.
   - **Backoff.** After a failed attempt it backs off 180, 180, 360, then 600 seconds, and it makes at most 8 attempts in any hour (#206's limits). While it is backing off, the challenged answer goes back to the caller, which raises `ChallengeError`, so a backfill stops as PR #35 does today.
   - **Not rate-limited or recorded.** The exchange and the resend bypass the rate limit, and are not recorded as Raw Responses: the exchange's answer is the token itself, and there are at most a few of each an hour. The recorded answer is the request's last one.
   - **Configuration.** `SOFASCORE__CAPTCHA_HEADLESS` (default false) runs the browser headless where that passes, as on macOS. The browser goes through `SOFASCORE__PROXY` when one is set.
@@ -133,8 +135,16 @@ Neither soak saw the challenge come back.
 - **Through the worker**, `football-intel ingest-match 16363244`, a Match challenged on 2026-10-13, stored 66 Raw Responses, all 200, with one token obtained.
 - **No leaks.** No Raw Response, Fetch Attempt or log line contains the token.
 
+### Low-reputation IPs (observed 2026-10-19)
+With a VPN accidentally on (NordVPN, a Brazilian exit), camoufox with `geoip` correctly took the São Paulo timezone and pt-BR. Turnstile still showed the interactive "Confirme que é humano" checkbox, headed and headless. camoufox does not click, so every attempt timed out. With the VPN off, on the home IP, the same code passed again.
+
+So passing without a click depends on IP reputation, not only on the browser. A datacenter or VPN IP, which is what a cloud server has, gets the checkbox. This is the strongest argument for open question 3.
+
 ## Open questions
 1. Does a session hold across token expiry and over several hours? Both soaks ran for 15 minutes, and tokens last 60. A soak of several hours answers it, and also whether volume brings the challenge back with a valid token.
 2. How often does obtaining a token fail over a day? #206's soak saw three failed refreshes in a row and one 24-minute outage.
-3. A server's IP. ADR 22 records that datacenter IP ranges are reportedly blocked, and the token's `ip` claim binds it to the exchanging IP. Moving ingestion off the developer's machine may need a residential proxy for both the browser and `curl_cffi`. Their IPs must match.
-4. Do the fonts and timezone matter in the container, or only headed Xvfb? This only affects the image size.
+3. A server's IP. ADR 22 records that datacenter IP ranges are reportedly blocked, and the token's `ip` claim binds it to the exchanging IP. A VPN exit already got the interactive checkbox (above), so moving ingestion off the developer's machine needs one of two things, and a new ADR (ADR 22):
+   - a sticky residential proxy, shared by the browser and `curl_cffi`, whose exit IP holds for at least an hour;
+   - a solver that clicks the checkbox.
+4. Do the fonts matter in the container, or only headed Xvfb and the matching timezone? This only affects the image size (4.5 GB).
+5. Is the `X-Captcha` header alone enough, or does Sofascore also want the `sofa_captcha` cookie the exchange sets? It could not be tested on 2026-10-19 while the challenge was lifted. The shared session makes it moot.

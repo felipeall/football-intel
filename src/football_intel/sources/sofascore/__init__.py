@@ -16,9 +16,9 @@ SOURCE = "sofascore"
 class SofascorePolicy(SourcePolicy):
     """Sofascore's defaults, from the #21 backfill. A sustained 1 request per second drew a
     403 bot challenge (`"reason": "challenge"`) within minutes, so: half that rate, and a
-    15-minute circuit-breaker cool-down for other failures. A challenge itself is not retried
-    (`ChallengeError`). Defaults on a subclass, so overriding one field from the environment
-    keeps the others."""
+    15-minute circuit-breaker cool-down for other failures. A challenge is answered with a
+    Captcha Token (ADR 30); `ChallengeError` means none could be obtained. Defaults on a
+    subclass, so overriding one field from the environment keeps the others."""
 
     requests_per_second: float = Field(default=0.5, gt=0)
     breaker_cooldown_seconds: float = Field(default=900.0, gt=0)
@@ -33,7 +33,8 @@ NON_RETRYABLE_ERRORS = (
     "MatchNotFinished",
     "SeasonNotFound",
     "RawResponseMissingError",
-    # The challenge lasts hours: retries would only spend attempts against it.
+    # No Captcha Token could be obtained, and the Token Provider is backing off (ADR 30):
+    # retries would only spend attempts against the challenge.
     "ChallengeError",
 )
 
