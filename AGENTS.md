@@ -51,7 +51,7 @@ Two gates. Each ends in a written verdict, and the work moves on only after it.
 - Open one pull request at a time, and start dependent work once it has merged.
 - When a pull request must build on an unmerged one, retarget it to `main` (`gh pr edit <n> --base main`) before merging its base. Squash-merging with `--delete-branch` closes every pull request still based on the deleted branch, and GitHub refuses to reopen one whose branch was force-pushed since.
 - CI (`.github/workflows/ci.yml`) runs `ruff`, `pyright`, `pytest`, `import-linter` and `gitleaks` on every pull request and push to `main`. Merge only with all of them green, read from the run on the pull request's current head commit (`gh run list --branch <branch>`); a rebase or force-push starts a new run.
-- The repository is private on a free plan: branch protection and rulesets answer 403, so GitHub enforces no required checks (#1).
+- `main` is protected: merges go through a pull request, need all five checks green on a branch up to date with `main`, and keep history linear. Force-pushes, deletion and direct pushes are refused, admins included.
 - Write `Closes #N` only in pull request bodies: in a commit pushed straight to `main` it closes the issue on push, before its remaining criteria are met. After `gh issue reopen`, confirm the state with `gh issue view`.
 
 ## Progress
