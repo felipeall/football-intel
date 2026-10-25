@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 from psycopg import AsyncConnection
-from temporalio.client import ScheduleCalendarSpec, ScheduleOverlapPolicy
+from temporalio.client import ScheduleCalendarSpec, ScheduleOverlapPolicy, ScheduleState
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -16,7 +16,7 @@ from football_intel.ingestion.models import (
     PostMatchInput,
     PostMatchResult,
 )
-from football_intel.ingestion.schedules import ensure_post_match_schedule
+from football_intel.ingestion.schedules import ensure_post_match_schedule, post_match_schedule
 from football_intel.ingestion.workflows import (
     FixturesWorkflow,
     MatchIngestWorkflow,
@@ -215,6 +215,24 @@ async def test_the_schedule_command_is_idempotent(temporal: WorkflowEnvironment)
     assert isinstance(calendar, ScheduleCalendarSpec)
     assert [hour.start for hour in calendar.hour] == [6]
     assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
+    assert schedule.state.paused
+
+
+async def test_the_schedule_command_pauses_a_running_schedule(
+    temporal: WorkflowEnvironment,
+) -> None:
+    task_queue = f"test-{uuid.uuid4()}"
+    running = post_match_schedule(task_queue)
+    running.state = ScheduleState(paused=False)
+    await temporal.client.create_schedule("post-match-fixtures", running)
+
+    outcome = await ensure_post_match_schedule(temporal.client, task_queue)
+
+    handle = temporal.client.get_schedule_handle("post-match-fixtures")
+    schedule = (await handle.describe()).schedule
+    await handle.delete()
+    assert outcome == "updated"
+    assert schedule.state.paused
 
 
 def _at(timestamp: int) -> datetime:
