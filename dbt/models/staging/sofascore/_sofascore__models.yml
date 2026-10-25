@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: base_sofascore__responses
+    description: The latest successful Raw Response per Sofascore URL.
+    columns:
+      - name: url
+        data_tests: [unique, not_null]
+
+  - name: stg_sofascore__matches
+    description: Finished Sofascore Matches, one row per event.
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: season_year
+        data_tests: [not_null]
+      - name: home_team_id
+        data_tests: [not_null]
+      - name: away_team_id
+        data_tests: [not_null]
+
+  - name: stg_sofascore__appearances
+    description: One Appearance per player with minutes in a finished Sofascore Match.
+    columns:
+      - name: appearance_id
+        data_tests: [unique, not_null]
+      - name: match_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_sofascore__matches')
+                field: match_id
+      - name: player_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests: [not_null]
+      - name: minutes_played
+        data_tests: [not_null]

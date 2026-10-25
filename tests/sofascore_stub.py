@@ -36,11 +36,17 @@ NO_HEATMAP = 22
 BASE = "/api/v1/event"
 
 
-def _entry(player_id: int, minutes: int | None) -> dict[str, Any]:
+def _entry(player_id: int, minutes: int | None, substitute: bool = False) -> dict[str, Any]:
     statistics: dict[str, Any] = {"ratingVersions": {}}
     if minutes is not None:
         statistics |= {"minutesPlayed": minutes, "rating": 7.0}
-    return {"player": {"id": player_id, "name": f"Player {player_id}"}, "statistics": statistics}
+    return {
+        "player": {"id": player_id, "name": f"Player {player_id}"},
+        "teamId": player_id // 10,
+        "position": "M",
+        "substitute": substitute,
+        "statistics": statistics,
+    }
 
 
 def _event(event_id: int, status: str) -> dict[str, Any]:
@@ -48,15 +54,20 @@ def _event(event_id: int, status: str) -> dict[str, Any]:
         "event": {
             "id": event_id,
             "status": {"type": status},
+            "tournament": {"uniqueTournament": {"id": TOURNAMENT_ID}},
+            "season": {"id": SEASON_ID, "year": "24/25"},
+            "startTimestamp": 1_735_689_600 + event_id,
             "homeTeam": {"id": 1, "name": "Home FC"},
             "awayTeam": {"id": 2, "name": "Away FC"},
+            "homeScore": {"current": 2},
+            "awayScore": {"current": 1},
         }
     }
 
 
 LINEUPS = {
-    "home": {"players": [_entry(11, 90), _entry(12, 90), _entry(BENCHED, None)]},
-    "away": {"players": [_entry(21, 90), _entry(22, 4)]},
+    "home": {"players": [_entry(11, 90), _entry(12, 90), _entry(BENCHED, None, substitute=True)]},
+    "away": {"players": [_entry(21, 90), _entry(22, 4, substitute=True)]},
 }
 
 

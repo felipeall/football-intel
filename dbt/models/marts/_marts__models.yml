@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: player_season_minutes
+    description: Appearances and minutes per Sofascore player and season.
+    columns:
+      - name: player_season_id
+        data_tests: [unique, not_null]
+      - name: minutes_played
+        data_tests: [not_null]

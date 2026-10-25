@@ -138,6 +138,14 @@ uv run football-intel success-rates --from 2026-10-01 --to 2026-10-13
 
 The success rate shows breakage: successful answers and 404s (the source answered; the thing does not exist) over the attempts that reached the source. Circuit-breaker rejections and reuses never reached it, so they are counted but left out of the rate. An answer counts as blocked when it is a 403 or 429, or when the source's own failure test rejects it, such as Transfermarkt's WAF challenge served with a 200. The same numbers are in the `raw.source_success_rates` view.
 
+Transforms run in dbt ([ADR 11](docs/adr/0011-transform-layer.md)), from the project in `dbt/`. It reads `raw.raw_responses` and builds views in the `staging` schema and tables in `marts`. Build and test everything:
+
+```sh
+uv run --env-file .env dbt build --project-dir dbt --profiles-dir dbt
+```
+
+dbt reads the connection from the `POSTGRES_*` variables, so `--env-file .env` passes them. Staging uses the latest successful Raw Response per URL, so re-fetches and failed answers drop out. `staging.stg_sofascore__matches` has the finished Sofascore Matches, `staging.stg_sofascore__appearances` one row per player with minutes in a Match, and `marts.player_season_minutes` the Appearances and minutes per player and season. Until Identity Resolution, players are Sofascore's own IDs.
+
 ## Development
 
 Requires [`uv`](https://docs.astral.sh/uv/).
