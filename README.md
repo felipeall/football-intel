@@ -79,14 +79,14 @@ Requires Docker with Compose.
 
 ```sh
 cp .env.example .env       # then replace the placeholder values
-docker compose up --wait   # Temporal, Postgres 17 + pgvector, Langfuse
+docker compose up --wait   # Temporal, Postgres 17 + pgvector, migrations, worker
 ```
 
 - Temporal gRPC on `localhost:7233`, web UI at <http://localhost:8233>.
 - Postgres on `localhost:5432`; data lives in the `postgres-data` volume and survives `docker compose down`. `docker compose down -v` deletes it.
 - The Temporal dev server keeps its state (schedules, running and sleeping workflows, history) in SQLite on the `temporal-data` volume, so it survives `docker compose down` and restarts. `docker compose down -v` deletes it with the other volumes. After that, recreate the post-match schedule with `uv run football-intel schedule-post-match`, which is safe to run at any time.
 - To check persistence: start any workflow, run `docker compose down && docker compose up --wait`, then confirm the workflow and the `post-match-fixtures` schedule are still listed in the UI or by `temporal schedule list`.
-- Langfuse UI at <http://localhost:3000>. The first start creates the `football-intel` organisation, project and API keys, and a user from the `LANGFUSE_INIT_USER_*` variables. Check tracing with `uv run --env-file .env scripts/langfuse_smoke.py`.
+- Langfuse runs only with its Compose profile, since nothing traces to it until the agent lands: `docker compose --profile langfuse up --wait` starts it with its Postgres, ClickHouse, Redis and MinIO, and `docker compose --profile langfuse stop` stops them, keeping their volumes. Langfuse UI at <http://localhost:3000>. The first start creates the `football-intel` organisation, project and API keys, and a user from the `LANGFUSE_INIT_USER_*` variables. Check tracing with `uv run --env-file .env scripts/langfuse_smoke.py`.
 - A `migrate` service applies the database migrations ([ADR 29](docs/adr/0029-migrations-alembic.md)); the `worker` service then runs the ingestion workflows.
 
 Store one club's squad for one season as Raw Responses (club `985` is Manchester United on Transfermarkt):
