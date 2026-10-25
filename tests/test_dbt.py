@@ -1,6 +1,8 @@
 import os
 import subprocess
 import sys
+from contextlib import suppress
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +12,11 @@ from psycopg.conninfo import conninfo_to_dict
 
 from football_intel.fetch_attempts import FetchAttemptStore
 from football_intel.raw_responses import RawResponseStore
-from football_intel.sources import sofascore
+from football_intel.sources import sofascore, understat
 from football_intel.sources.sofascore.matches import MatchNotFinished, fetch_match
+from football_intel.sources.understat import league as understat_league
 from tests.sofascore_stub import NOT_STARTED_EVENT_ID, PLAYED, SofascoreStub
+from tests.understat_stub import AWAY_TEAM, HOME_TEAM, LEAGUE, UnderstatStub
 
 DBT_PROJECT = Path(__file__).parent.parent / "dbt"
 
@@ -87,4 +91,44 @@ async def test_dbt_builds_matches_appearances_and_season_minutes(
         (12, "24/25", 2, 180),
         (21, "24/25", 2, 180),
         (22, "24/25", 2, 8),
+    ]
+
+
+async def test_dbt_builds_understat_matches_appearances_and_shots(
+    connection: AsyncConnection[Any], database_url: str, tmp_path: Path
+) -> None:
+    recording = understat.recording_transport(
+        UnderstatStub().transport(), RawResponseStore(connection), FetchAttemptStore(connection)
+    )
+    season = await understat_league.fetch_league_season(recording, LEAGUE, 2024)
+    for match_id in season.finished_match_ids:
+        with suppress(understat_league.MatchDataMissing):
+            await understat_league.fetch_match(recording, match_id)
+
+    _dbt_build(database_url, tmp_path)
+
+    cursor = await connection.execute(
+        "SELECT match_id, season, season_year, home_goals, away_goals, home_xg"
+        " FROM staging.stg_understat__matches ORDER BY match_id"
+    )
+    # Match 3 is not played yet; Match 2 is played, though its data is missing.
+    assert await cursor.fetchall() == [
+        (1, 2024, "24/25", 2, 1, Decimal("1.5")),
+        (2, 2024, "24/25", 2, 1, Decimal("1.5")),
+    ]
+    cursor = await connection.execute(
+        "SELECT match_id, player_id, team_id, side, minutes_played"
+        " FROM staging.stg_understat__appearances ORDER BY player_id"
+    )
+    assert await cursor.fetchall() == [
+        (1, 801, HOME_TEAM, "home", 90),
+        (1, 802, HOME_TEAM, "home", 75),
+        (1, 803, AWAY_TEAM, "away", 90),
+        (1, 804, AWAY_TEAM, "away", 15),
+    ]
+    cursor = await connection.execute(
+        "SELECT match_id, player_id, side, x, y, xg FROM staging.stg_understat__shots"
+    )
+    assert await cursor.fetchall() == [
+        (1, 801, "home", Decimal("0.9"), Decimal("0.5"), Decimal("0.25"))
     ]

@@ -228,3 +228,41 @@ class PostMatchResult:
     # "ingested", "postponed", "canceled", or "gave_up" after too many late checks.
     outcome: str
     ingest: MatchIngestResult | None = None
+
+
+@dataclass(frozen=True)
+class UnderstatSeasonInput:
+    """One Understat league season; `year` is its start year, as Understat names it (2025 is
+    25/26)."""
+
+    league: str
+    year: int
+    refresh: bool = False
+
+
+@dataclass(frozen=True)
+class UnderstatSeasonResult:
+    league: str
+    year: int
+    matches: int  # played Matches in the league data
+    already_complete: int  # stored before, so not requested
+    ingested: int
+    failed_match_ids: list[int]
+    raw_responses: int
+
+
+@dataclass(frozen=True)
+class UnderstatIngestInput:
+    """The latest `count` Understat seasons of a league, ending with the current one, or the
+    one season `year`."""
+
+    league: str
+    count: int = 3
+    year: int | None = None
+    refresh: bool = False
+
+
+@dataclass(frozen=True)
+class UnderstatIngestResult:
+    league: str
+    seasons: list[UnderstatSeasonResult]

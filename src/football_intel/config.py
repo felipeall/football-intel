@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # One policy per source, e.g. TRANSFERMARKT__REQUESTS_PER_SECOND=0.5.
     transfermarkt: SourcePolicy = SourcePolicy()
     sofascore: SofascorePolicy = SofascorePolicy()
+    understat: SourcePolicy = SourcePolicy()
 
     @property
     def database_url(self) -> str:

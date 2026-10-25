@@ -130,6 +130,16 @@ uv run football-intel schedule-post-match
 
 Every day at 06:00 UTC it reads the Premier League's next fixtures and starts one post-match workflow per Match kicking off within eight days, named `post-match-<event id>`; a fixture seen on several days starts only one. Each one sleeps on a durable timer until kickoff + 4 hours (final whistle + 2 hours, [ADR 5](docs/adr/0005-coverage-and-refresh.md)), then checks the Match. Finished, it is ingested like `ingest-match`. Moved to a new kickoff, the wait starts over. Still on, it is checked again every 30 minutes, up to 12 times. Postponed or cancelled, the workflow ends, and a later run picks up the new date. To run it now instead of waiting for 06:00, trigger it from the Temporal UI or with `temporal schedule trigger --schedule-id post-match-fixtures`.
 
+Understat is the second, independent source of xG ([ADR 3](docs/adr/0003-live-data-sources.md)). Store its last three Premier League seasons, or one season by its start year (`2025` is 25/26):
+
+```sh
+uv run football-intel understat-backfill            # current season and the two before it
+uv run football-intel understat-backfill --season 2025
+uv run football-intel schedule-understat            # daily at 07:00 UTC, current season
+```
+
+Each season is one request for the league data (teams, players and fixtures, always fetched fresh) plus one per played Match (rosters and Shots), about 1 request per second (`UNDERSTAT__REQUESTS_PER_SECOND`). A Match already stored is not requested again. A Match the league data lists as played whose data answers 404 is listed as failed, and the next run tries it again. The daily Schedule runs the same workflow for the current season only, so it picks up the previous day's Matches. Understat answers every data request without the `X-Requested-With: XMLHttpRequest` header with a 404, the same as for a Match that does not exist; the client always sends it.
+
 Every upstream request also leaves one Fetch Attempt in `raw.fetch_attempts`, including timeouts, transport errors, circuit-breaker rejections and reuses of a fresh Raw Response. Print each source's outcomes and success rate per day (UTC) for the last seven days, or for a range with `--from` and `--to`:
 
 ```sh
@@ -144,7 +154,7 @@ Transforms run in dbt ([ADR 11](docs/adr/0011-transform-layer.md)), from the pro
 uv run --env-file .env dbt build --project-dir dbt --profiles-dir dbt
 ```
 
-dbt reads the connection from the `POSTGRES_*` variables, so `--env-file .env` passes them. Staging uses the latest successful Raw Response per URL, so re-fetches and failed answers drop out. `staging.stg_sofascore__matches` has the finished Sofascore Matches, `staging.stg_sofascore__appearances` one row per player with minutes in a Match, and `marts.player_season_minutes` the Appearances and minutes per player and season. Until Identity Resolution, players are Sofascore's own IDs.
+dbt reads the connection from the `POSTGRES_*` variables, so `--env-file .env` passes them. Staging uses the latest successful Raw Response per URL, so re-fetches and failed answers drop out. `staging.stg_sofascore__matches` has the finished Sofascore Matches, `staging.stg_sofascore__appearances` one row per player with minutes in a Match, and `marts.player_season_minutes` the Appearances and minutes per player and season. From Understat, `staging.stg_understat__matches` has the played Matches with their xG, `staging.stg_understat__appearances` one row per player with minutes, and `staging.stg_understat__shots` every Shot with its location and xG. Until Identity Resolution, players are Sofascore's own IDs.
 
 ## Development
 

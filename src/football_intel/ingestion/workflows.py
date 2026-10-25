@@ -1,7 +1,7 @@
 """Workflows. Deterministic: no I/O here, only activity calls."""
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -13,7 +13,11 @@ from temporalio.exceptions import (
 )
 
 with workflow.unsafe.imports_passed_through():
-    from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
+    from football_intel.ingestion.activities import (
+        SofascoreActivities,
+        TransfermarktActivities,
+        UnderstatActivities,
+    )
     from football_intel.ingestion.models import (
         BackfillInput,
         BackfillResult,
@@ -33,8 +37,12 @@ with workflow.unsafe.imports_passed_through():
         SeasonsInput,
         SquadIngestInput,
         SquadIngestResult,
+        UnderstatIngestInput,
+        UnderstatIngestResult,
+        UnderstatSeasonInput,
+        UnderstatSeasonResult,
     )
-    from football_intel.sources import sofascore, transfermarkt
+    from football_intel.sources import sofascore, transfermarkt, understat
 
 # Polite backoff: 10s, 20s, 40s, 80s between the five attempts. A failed attempt is retried
 # whole; Raw Responses it stored stay, as a record of what the source answered.
@@ -53,6 +61,16 @@ SOFASCORE_RETRY_POLICY = RetryPolicy(
     maximum_interval=timedelta(minutes=5),
     maximum_attempts=5,
     non_retryable_error_types=list(sofascore.NON_RETRYABLE_ERRORS),
+)
+
+# The same backoff for Understat. A retried season re-checks what is stored, so it only
+# fetches the Matches still missing.
+UNDERSTAT_RETRY_POLICY = RetryPolicy(
+    initial_interval=timedelta(seconds=10),
+    backoff_coefficient=2.0,
+    maximum_interval=timedelta(minutes=5),
+    maximum_attempts=5,
+    non_retryable_error_types=list(understat.NON_RETRYABLE_ERRORS),
 )
 
 
@@ -348,3 +366,44 @@ class FixturesWorkflow:
             except WorkflowAlreadyStartedError:
                 already_scheduled.append(fixture.event_id)
         return FixturesResult(started, already_scheduled, beyond_horizon)
+
+
+# Understat names a season by its start year. The Premier League starts in August, so until
+# then the current season is the one that started the year before.
+SEASON_START_MONTH = 8
+
+
+def current_understat_year(now: datetime) -> int:
+    """The start year of the season under way, or about to start, at `now`."""
+    return now.year if now.month >= SEASON_START_MONTH else now.year - 1
+
+
+@workflow.defn
+class UnderstatIngestWorkflow:
+    """Store a league's latest Understat seasons, ending with the current one, or one chosen
+    season, as Raw Responses: one activity per season, one season after another.
+
+    The daily Schedule runs it for the current season only; a backfill for three (ADR 5).
+    """
+
+    @workflow.run
+    async def run(self, input: UnderstatIngestInput) -> UnderstatIngestResult:
+        if input.year is not None:
+            years = [input.year]
+        else:
+            current = current_understat_year(workflow.now())
+            years = [current - offset for offset in range(input.count)]
+        seasons: list[UnderstatSeasonResult] = []
+        for year in years:
+            # About 380 requests at the source's rate: some minutes. Heartbeats on every
+            # request catch a dead worker.
+            seasons.append(
+                await workflow.execute_activity_method(
+                    UnderstatActivities.ingest_season,
+                    UnderstatSeasonInput(input.league, year, input.refresh),
+                    start_to_close_timeout=timedelta(hours=1),
+                    heartbeat_timeout=timedelta(minutes=1),
+                    retry_policy=UNDERSTAT_RETRY_POLICY,
+                )
+            )
+        return UnderstatIngestResult(input.league, seasons)
