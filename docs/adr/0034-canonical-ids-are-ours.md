@@ -26,10 +26,11 @@ A first draft of this ADR let any source mint any entity, with club slugs minted
   - **A command proposes links.** It looks at source teams with no link and proposes one from Reep (another source's team in the same Reep team is already linked) or from fixtures (a Match on the same date with the same score is already linked on the other source). A person confirms each proposal, or adds a new Club. That is about three Clubs per league per season. There is no fuzzy name matching: "Manchester United" and "Manchester City" defeat it.
   - **The 25 current Clubs** move from the dbt seed into these tables, with its slugs and its three sources' IDs as links. The seed is then deleted, as ADR 33 decided.
 - **Competitions.** **`identity.competitions`** holds a slug we choose (`premier-league`). A small link table maps each source's competition ID to it: Sofascore 17, Understat `EPL`, Transfermarkt `GB1`. Both are added by hand when we take on a competition.
-- **Matches.** The ID is `<competition>[:<stage>]:<season>:<home club>:<away club>`, such as `premier-league:2025:arsenal:chelsea`.
+- **Stages.** A competition has one or more stages that we name: `league` for a league season, and `league-phase`, `round-of-16`, `quarter-final`, `semi-final` and `final` for a cup. **`identity.stages`** holds them per competition, and a link table maps each source's stage or round label to one. Both are added by hand with the competition. Stages are named, never numbered: a postponed league match keeps its matchweek but is played weeks later, and the sources number rounds differently or not at all.
+- **Matches.** The ID is `<competition>:<season>:<stage>:<home club>:<away club>`, such as `premier-league:2025:league:arsenal:chelsea` or `champions-league:2025:final:arsenal:chelsea`.
   - It is built in dbt, only from our own IDs.
-  - The stage is added only for competitions where a home and away pair can meet twice in a season (split-phase leagues, play-offs).
-  - dbt's `unique` test on the Match ID guards it: a competition that breaks the key fails the build until it gets a stage.
+  - The stage is always present, so every Match ID has the same shape. It separates repeat meetings in one competition and season, such as a league-phase game and a final between the same clubs. Within a two-legged tie, the home club swaps between legs, so the legs' IDs differ.
+  - dbt's `unique` test on the Match ID guards the rest: the same stage, the same home club and the same opponent twice in a season (an old-style cup replay) fails the build until the competition gets a finer stage.
   - Season stays the start year. A calendar-year league uses its single year.
 - **Players.**
   - **IDs stay ours** (`identity.players`).
@@ -47,10 +48,10 @@ A first draft of this ADR let any source mint any entity, with club slugs minted
 
 ## Consequences
 - **Losing a source keeps every ID.** Its link columns stop growing. Losing the Player anchor means switching it, deliberately, as above.
-- **IDs are readable** (`arsenal`, `premier-league:2025:arsenal:chelsea`) and reproducible, because a person chose them and they live in `identity`, which is backed up as the only source of truth for them.
+- **IDs are readable** (`arsenal`, `premier-league:2025:league:arsenal:chelsea`) and reproducible, because a person chose them and they live in `identity`, which is backed up as the only source of truth for them.
 - **A person confirms new Clubs,** a few a season, through the club command.
-- **New `identity` tables:** `clubs`, `club_links`, `competitions`, `competition_links`. `identity_candidates` stays Players-only.
-- **Today's Match IDs gain the competition prefix.** The slugs are the seed's, so `2025:arsenal:chelsea` becomes `premier-league:2025:arsenal:chelsea`.
+- **New `identity` tables:** `clubs`, `club_links`, `competitions`, `competition_links`, `stages`, `stage_links`. `identity_candidates` stays Players-only.
+- **Today's Match IDs gain the competition and the stage.** The slugs are the seed's, so `2025:arsenal:chelsea` becomes `premier-league:2025:league:arsenal:chelsea`.
 - **ADR 33 is superseded.** Its Reep team IDs as Club IDs are replaced. Loading team bridges is kept, as a link-proposal input, and the seed stays deleted.
 - **ADR 32 is amended:**
   - the Reep load keeps bridges for every provider we ingest;

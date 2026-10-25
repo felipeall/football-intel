@@ -22,7 +22,8 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Club** — A football club, canonical across sources. Its ID is a readable slug a person chooses when it is added (`arsenal`), never changed; same-named clubs are told apart by place. Each source's team ID links to it ([ADR 34](docs/adr/0034-canonical-ids-are-ours.md)).
 - **Season** — One league season, named by its start year (2025 is 2025/26, written "25/26" by Sofascore). Understat and Transfermarkt use the start year too. A calendar-year league uses its single year.
 - **Competition** — A league or cup we cover, with a slug we choose (`premier-league`) and a link from each source's own competition ID.
-- **Match** — A single fixture, canonical across sources. Its ID is built from our own IDs: Competition, an optional stage, Season, home Club and away Club (`premier-league:2025:arsenal:chelsea`).
+- **Stage** — A named part of a Competition's season: `league` for a league, `league-phase`, `round-of-16` or `final` for a cup. Named by us, never numbered, and linked from each source's stage or round label.
+- **Match** — A single fixture, canonical across sources. Its ID is built from our own IDs: Competition, Season, Stage, home Club and away Club (`premier-league:2025:league:arsenal:chelsea`).
 - **Appearance** — One Player's participation in one Match, with minutes and per-match statistics.
 - **Action** — A located on-ball event attributed to a player in a match (pass with start/end, dribble, ball carry, defensive action), from Sofascore's rating breakdown. No timestamps or sequence.
 - **Shot** — A located shot with xG (and xGOT on Sofascore). Shots arrive from two independent sources: Sofascore and Understat.
