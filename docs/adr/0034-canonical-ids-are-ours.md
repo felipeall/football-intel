@@ -50,6 +50,7 @@ Two reviews on #66 shaped this decision.
   - A league where the same home and away pair meets more than once in one phase (the Scottish Premiership) is out of scope until it gets its own rule.
 - **Matches.** The ID is `<competition>:<season>:<stage>:<home club>:<away club>`, such as `premier-league:2025:league:arsenal:west-ham-united`.
   - It is derived by dbt from our IDs and links, not stored. It changes only when a Club, Stage or link is deliberately changed, and a Club's aliases keep an old ID resolving.
+  - The round is not part of the ID. Only some sources have one (Sofascore's `roundInfo.round`, Transfermarkt's matchday, not Understat), and a postponed fixture can be renumbered. In a league season the pair is already unique. `marts.matches` carries `round` as a column, from whichever source has it.
   - dbt's `unique` test guards the key.
   - A second test fails if two Matches share competition, season, stage, the same two Clubs in either order, and the same kickoff date. That catches a neutral-venue match the sources record with home and away swapped.
 - **The Reep load** keeps person and team bridges only, for every provider we ingest. Only Reep entities bridged to at least two of those providers are kept: about 29k persons and 10k teams in release `2026-10-25.1`.
