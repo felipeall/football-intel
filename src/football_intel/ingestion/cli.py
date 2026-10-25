@@ -138,7 +138,7 @@ async def schedule_post_match(settings: Settings) -> None:
     outcome = await ensure_post_match_schedule(
         await _client(settings), settings.temporal_task_queue
     )
-    print(f"Schedule {POST_MATCH_SCHEDULE_ID} {outcome}: daily at 06:00 UTC")
+    print(f"Schedule {POST_MATCH_SCHEDULE_ID} {outcome}: daily at 06:00 UTC, paused")
 
 
 async def understat_backfill(settings: Settings, year: int | None, refresh: bool) -> None:
@@ -162,7 +162,7 @@ async def understat_backfill(settings: Settings, year: int | None, refresh: bool
 
 async def schedule_understat(settings: Settings) -> None:
     outcome = await ensure_understat_schedule(await _client(settings), settings.temporal_task_queue)
-    print(f"Schedule {UNDERSTAT_SCHEDULE_ID} {outcome}: daily at 07:00 UTC")
+    print(f"Schedule {UNDERSTAT_SCHEDULE_ID} {outcome}: daily at 07:00 UTC, paused")
 
 
 SUCCESS_RATE_COLUMNS = (
