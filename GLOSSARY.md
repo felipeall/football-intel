@@ -17,6 +17,7 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source.
 - **Identity Resolution** — The process of linking Source Records to a Player: deterministic rules, then fuzzy scoring, then an LLM judge, then human review below a confidence threshold.
 - **Identity Candidate** — A proposed link between a Source Record and a Player, with a confidence score and the method that produced it.
+- **Transform Run** — One pass that builds dbt staging, runs Identity Resolution's automatic steps, then builds the marts. Only one runs at a time; it runs daily and on demand ([ADR 31](docs/adr/0031-identity-schema-and-transform-runs.md)).
 - **Match** — A single fixture, canonical across sources.
 - **Appearance** — One Player's participation in one Match, with minutes and per-match statistics.
 - **Action** — A located on-ball event attributed to a player in a match (pass with start/end, dribble, ball carry, defensive action), from Sofascore's rating breakdown. No timestamps or sequence.
