@@ -19,7 +19,7 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Identity Candidate** — A proposed link between a Source Record and a Player, with a confidence score, the method that produced it (the Reep Release, a rule, fuzzy scoring, the LLM judge or a reviewer) and a status: pending, accepted or rejected. An accepted Candidate is the link. Pending ones form the ambiguous band the LLM judge and human review decide.
 - **Reep Release** — A pinned, checksum-verified release of the Reep football identity register (CC0). It maps provider IDs to one another. Identity Resolution takes its mappings first, and its own rules decide only where Reep has none ([ADR 32](docs/adr/0032-reep-first-mapping-layer.md)).
 - **Transform Run** — One pass that builds dbt staging, runs Identity Resolution's automatic steps, then builds the marts. Only one runs at a time; it runs daily and on demand ([ADR 31](docs/adr/0031-identity-schema-and-transform-runs.md)).
-- **Club** — A football club, canonical across sources. Each source has its own ID for it; a hand-maintained seed maps them.
+- **Club** — A football club, canonical across sources. Its ID is the Reep register's team ID, and each source's own ID maps to it through the pinned Reep Release ([ADR 33](docs/adr/0033-reep-maps-clubs.md)).
 - **Season** — One league season, named by its start year (2025 is 2025/26, written "25/26" by Sofascore). Understat and Transfermarkt use the start year too.
 - **Match** — A single fixture, canonical across sources. Within a league Season, its home and away Club identify it.
 - **Appearance** — One Player's participation in one Match, with minutes and per-match statistics.
