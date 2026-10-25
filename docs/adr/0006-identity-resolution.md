@@ -1,6 +1,6 @@
 # 6. Player identity resolution
 
-Status: Accepted — 2026-10-11
+Status: Accepted — 2026-10-11. Refined by ADR 32 (Reep decides first).
 
 ## Decision
 Resolution pipeline, run as a Temporal workflow:
