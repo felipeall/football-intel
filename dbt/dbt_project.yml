@@ -18,7 +18,7 @@ models:
 
 seeds:
   football_intel:
-    +schema: reference
+    +schema: seeds
 
 flags:
   send_anonymous_usage_stats: false
