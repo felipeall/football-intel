@@ -14,11 +14,11 @@ SOURCE = "sofascore"
 
 
 class SofascorePolicy(SourcePolicy):
-    """Sofascore's defaults, from the #21 backfill. A sustained 1 request per second drew a
-    403 bot challenge (`"reason": "challenge"`) within minutes, so: half that rate, and a
-    15-minute circuit-breaker cool-down for other failures. A challenge is answered with a
-    Captcha Token (ADR 30); `ChallengeError` means none could be obtained. Defaults on a
-    subclass, so overriding one field from the environment keeps the others."""
+    """Sofascore's defaults, from the first three-season backfill. A sustained 1 request per
+    second drew a 403 bot challenge (`"reason": "challenge"`) within minutes, so: half that
+    rate, and a 15-minute circuit-breaker cool-down for other failures. A challenge is
+    answered with a Captcha Token (ADR 30); `ChallengeError` means none could be obtained.
+    Defaults on a subclass, so overriding one field from the environment keeps the others."""
 
     requests_per_second: float = Field(default=0.5, gt=0)
     breaker_cooldown_seconds: float = Field(default=900.0, gt=0)

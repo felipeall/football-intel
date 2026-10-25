@@ -44,7 +44,12 @@ x-langfuse-depends-on: &langfuse-depends-on
 services:
   temporal:
     image: temporalio/temporal:1.9.1
-    command: ["server", "start-dev", "--ip", "0.0.0.0", "--namespace", "${TEMPORAL_NAMESPACE}"]
+    # State in SQLite on a volume, so schedules and sleeping workflows survive a restart.
+    # Mounted at the image user's home: a new mount point would be root-owned.
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--namespace", "${TEMPORAL_NAMESPACE}",
+              "--db-filename", "/home/temporal/temporal.db"]
+    volumes:
+      - temporal-data:/home/temporal
     ports:
       - "${TEMPORAL_PORT}:7233"
       - "${TEMPORAL_UI_PORT}:8233"
@@ -208,6 +213,7 @@ services:
       retries: 20
 
 volumes:
+  temporal-data:
   postgres-data:
   langfuse-postgres-data:
   langfuse-clickhouse-data:
