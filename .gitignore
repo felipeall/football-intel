@@ -20,6 +20,7 @@ build/
 # dbt
 target/
 dbt_packages/
+.user.yml
 logs/
 
 # Node
