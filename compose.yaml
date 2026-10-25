@@ -44,8 +44,8 @@ x-langfuse-depends-on: &langfuse-depends-on
 services:
   temporal:
     image: temporalio/temporal:1.9.1
-    # State in SQLite on a volume, so schedules and sleeping workflows survive a restart
-    # (#39). Mounted at the image user's home: a new mount point would be root-owned.
+    # State in SQLite on a volume, so schedules and sleeping workflows survive a restart.
+    # Mounted at the image user's home: a new mount point would be root-owned.
     command: ["server", "start-dev", "--ip", "0.0.0.0", "--namespace", "${TEMPORAL_NAMESPACE}",
               "--db-filename", "/home/temporal/temporal.db"]
     volumes:

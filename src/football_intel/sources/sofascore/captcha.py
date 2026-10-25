@@ -38,7 +38,8 @@ CAPTCHA_PAGE = f"{ORIGIN}/captcha.html?redirectUrl=https%3A%2F%2Fwww.sofascore.c
 EXCHANGE_URL = f"{ORIGIN}/api/v1/token/captcha"
 # A token this close to its expiry is dropped; the next request goes without one.
 EXPIRY_MARGIN_SECONDS = 300.0
-# Waits after the 1st, 2nd, 3rd and later consecutive failed attempts (#206's soak).
+# Waits after the 1st, 2nd, 3rd and later consecutive failed attempts, from a prior soak
+# of the same challenge (ADR 30).
 BACKOFF_SECONDS = (180.0, 180.0, 360.0, 600.0)
 MAX_ATTEMPTS_PER_HOUR = 8
 # The whole attempt, solve and exchange: requests waiting on it stay inside the activities'
