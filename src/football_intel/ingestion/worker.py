@@ -78,7 +78,7 @@ async def run_worker(settings: Settings) -> None:
             match_activities.upcoming_fixtures,
             match_activities.match_status,
             understat_activities.ingest_season,
-            IdentityActivities(settings.database_url).resolve_identities,
+            IdentityActivities(settings.database_url, settings.reep.release).resolve_identities,
         ],
     )
     await worker.run()

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 from psycopg import AsyncConnection
 from temporalio.client import Client
@@ -32,6 +33,8 @@ from football_intel.ingestion.workflows import (
     SquadIngestWorkflow,
     UnderstatIngestWorkflow,
 )
+from football_intel.reep import load as reep_load
+from football_intel.reep import release as reep_release
 from football_intel.sources.sofascore.seasons import PREMIER_LEAGUE as SOFASCORE_PREMIER_LEAGUE
 from football_intel.sources.transfermarkt.competitions import PREMIER_LEAGUE
 from football_intel.sources.understat.league import PREMIER_LEAGUE as UNDERSTAT_PREMIER_LEAGUE
@@ -173,12 +176,66 @@ async def resolve_identities(settings: Settings) -> None:
         id="identity-resolution",
         task_queue=settings.temporal_task_queue,
     )
+    reep = f"Reep {result.reep_release} first" if result.reep_release else "no Reep release"
     print(
-        f"Identity Resolution: {result.players_created} Players created, "
+        f"Identity Resolution ({reep}): {result.players_created} Players created, "
         f"{result.candidates_stored} Candidates stored"
     )
     for count in result.candidates:
         print(f"  {count.source:<13} {count.method:<17} {count.status:<9} {count.count:>5}")
+
+
+REEP_DATA = Path("data/reep")
+REEP_PROVIDERS = ("sofascore", "transfermarkt", "understat")
+
+
+def _pinned_reep_release(settings: Settings) -> str:
+    if settings.reep.release is None:
+        raise SystemExit("Set REEP__RELEASE in .env to the Reep release to use (ADR 32).")
+    return settings.reep.release
+
+
+async def reep_status(settings: Settings) -> None:
+    pinned = _pinned_reep_release(settings)
+    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+        cursor = await conn.execute(
+            "SELECT release, gate_passed, loaded_at FROM reference.reep_releases ORDER BY release"
+        )
+        loaded = await cursor.fetchall()
+    async with reep_release.client() as api:
+        newer = await reep_release.releases_since(api, pinned)
+    print(f"Pinned (REEP__RELEASE): {pinned}")
+    for release, gate_passed, loaded_at in loaded:
+        print(f"Loaded: {release} on {loaded_at:%Y-%m-%d %H:%M} UTC, gate passed: {gate_passed}")
+    if not loaded:
+        print("Loaded: none; run `football-intel load-reep`")
+    if not newer:
+        print("Current: the pinned release is Reep's current one.")
+        return
+    print(f"Current: {newer[0].release}, {len(newer)} release(s) after the pinned one:")
+    for manifest in newer:
+        bridges = ", ".join(f"{p} +{manifest.new_bridges.get(p, 0)}" for p in REEP_PROVIDERS)
+        diff = manifest.data.get("diff", {})
+        print(
+            f"  {manifest.release} (after {manifest.previous}): new bridges {bridges}; "
+            f"ID retention {diff.get('id_retention_pct')} %; gate passed {manifest.gate_passed}"
+        )
+    print("To upgrade: set REEP__RELEASE, then run load-reep and resolve-identities.")
+
+
+async def load_reep(settings: Settings) -> None:
+    release = _pinned_reep_release(settings)
+    directory = REEP_DATA / release
+    async with reep_release.client() as api:
+        manifest = await reep_release.download(api, release, directory)
+    bridges = reep_load.player_bridges(directory)
+    async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
+        await reep_load.load(conn, manifest, bridges)
+    persons = len({bridge[0] for bridge in bridges})
+    print(
+        f"Reep {release}: {persons} persons with a Sofascore player, {len(bridges)} bridges "
+        f"loaded; release gate passed: {manifest.gate_passed}"
+    )
 
 
 SUCCESS_RATE_COLUMNS = (
@@ -307,6 +364,14 @@ def main() -> None:
     )
 
     commands.add_parser(
+        "reep-status",
+        help="compare the pinned Reep release with Reep's current one (no bulk download)",
+    )
+    commands.add_parser(
+        "load-reep",
+        help="download, verify and load the pinned Reep release's player bridges",
+    )
+    commands.add_parser(
         "resolve-identities",
         help="link staged Source Records to Players; run after dbt builds staging and marts",
     )
@@ -336,6 +401,10 @@ def main() -> None:
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
     elif args.command == "schedule-post-match":
         asyncio.run(schedule_post_match(settings))
+    elif args.command == "reep-status":
+        asyncio.run(reep_status(settings))
+    elif args.command == "load-reep":
+        asyncio.run(load_reep(settings))
     elif args.command == "resolve-identities":
         asyncio.run(resolve_identities(settings))
     elif args.command == "schedule-understat":

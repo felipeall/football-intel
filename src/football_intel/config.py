@@ -1,9 +1,16 @@
 """Settings read from the environment and `.env` (never from code)."""
 
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from football_intel.sources.interface import SourcePolicy
 from football_intel.sources.sofascore import SofascorePolicy
+
+
+class ReepSettings(BaseModel):
+    """The pinned release of the Reep register (ADR 32), e.g. REEP__RELEASE=2026-10-25.1."""
+
+    release: str | None = None
 
 
 class Settings(BaseSettings):
@@ -26,6 +33,7 @@ class Settings(BaseSettings):
     transfermarkt: SourcePolicy = SourcePolicy()
     sofascore: SofascorePolicy = SofascorePolicy()
     understat: SourcePolicy = SourcePolicy()
+    reep: ReepSettings = ReepSettings()
 
     @property
     def database_url(self) -> str:

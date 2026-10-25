@@ -65,7 +65,7 @@ Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-witho
 |---|---|---|---|
 | M1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | ✅ |
 | M2 | PoC | Sofascore, post-match workflows, three-season Match-level backfill (full pass in M7) | ✅ |
-| M3 | PoC | Understat, dbt, identity resolution | ⏳ |
+| M3 | PoC | Understat, dbt, identity resolution | 🚧 |
 | M4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
 | M5 | MVP | Evals in CI, durable scouting report job | ⏳ |
 | M6 | MVP | Next.js UI, FastAPI, GitHub login, quota | ⏳ |
@@ -157,13 +157,25 @@ uv run --env-file .env dbt build --project-dir dbt --profiles-dir dbt
 
 dbt reads the connection from the `POSTGRES_*` variables, so `--env-file .env` passes them. Staging uses the latest successful Raw Response per URL, so re-fetches and failed answers drop out. `staging.stg_sofascore__matches` has the finished Sofascore Matches, `staging.stg_sofascore__appearances` one row per player with minutes in a Match, and `marts.player_season_minutes` the Appearances and minutes per player and season. From Understat, `staging.stg_understat__matches` has the played Matches with their xG, `staging.stg_understat__appearances` one row per player with minutes, and `staging.stg_understat__shots` every Shot with its location and xG. `marts.clubs` maps each Club to its Sofascore, Understat and Transfermarkt IDs, from the hand-maintained seed `dbt/seeds/club_source_ids.csv`; a club new to the league needs a row there, or `dbt build` fails its tests. `marts.matches` links each source's Match to one canonical Match by Season, home Club and away Club (`2025:arsenal:chelsea`), with every source's ID. A test checks that linked Matches agree on the score, and a warning lists Matches only one source has stored yet.
 
-Identity Resolution links the staged Source Records to canonical Players ([ADR 6](docs/adr/0006-identity-resolution.md), [ADR 31](docs/adr/0031-identity-schema-and-transform-runs.md)). After `dbt build`, run:
+Identity Resolution links the staged Source Records to canonical Players ([ADR 6](docs/adr/0006-identity-resolution.md), [ADR 31](docs/adr/0031-identity-schema-and-transform-runs.md), [ADR 32](docs/adr/0032-reep-first-mapping-layer.md)). It takes the curated mappings of the [Reep](https://reep.football) register first, from a pinned release, and its own rules decide only where Reep has none. Pin the release in `.env` (`REEP__RELEASE=2026-10-25.1`), load it once, then run Identity Resolution after `dbt build`:
 
 ```sh
+uv run football-intel reep-status          # pinned, loaded and current releases, and what changed
+uv run football-intel load-reep            # download, verify and load the pinned release
 uv run football-intel resolve-identities
 ```
 
-Every Sofascore player becomes a Player. A Transfermarkt player links to the Sofascore player with the same birth date and the same name. An Understat player links to the Sofascore teammate who played the same Matches for the same Club with the same name and minutes. Other close candidates are scored on name, co-appearance and minutes: a clear best links as `fuzzy`, and the rest stay pending for the LLM judge. Results go to the Alembic-managed `identity` schema: `identity.players`, and `identity.identity_candidates` with each Candidate's method, confidence, status and evidence. A re-run proposes only Source Records that have no Candidate yet, so Player IDs and earlier decisions never change. Transfermarkt has only the current squads, so players who left the Premier League since 24/25 have no Transfermarkt link. Until Identity Resolution, players are Sofascore's own IDs.
+- **Checking for a new release.** Reep publishes data releases on `data.reep.football`, often more than once a week. Nothing announces them, and the GitHub repository's tags are code versions, not data. `reep-status` reads `latest.json` and each newer release's manifest, which describes the changes from its predecessor: new bridges per provider, ID retention, and the release's own quality gate. It downloads no bridges.
+- **Loading a release.** `load-reep` fetches the pinned release's manifest, `bridges.parquet` (about 376 MB, every entity type) and `redirects.parquet` into `data/reep/<release>/`, and checks each file's SHA-256 against the manifest. A mismatch stops it, and a file already verified is not downloaded again. It then keeps the player bridges of people Reep maps to a Sofascore player (about 28k), with merged Reep IDs resolved, and loads them into `reference.reep_player_bridges`, replacing that release's rows. The manifest and its gate result go to `reference.reep_releases`.
+- **Upgrading.** Set `REEP__RELEASE` to the new stamp, then run `load-reep` and `resolve-identities`. A new release only links Source Records that have no Candidate yet, so links and Player IDs never change. `resolve-identities` stops if the pinned release is not loaded.
+
+How a Source Record is linked:
+
+1. **Reep.** A Reep bridge between a Transfermarkt or Understat player we hold and a Sofascore player we hold is an accepted Candidate (`reep_bridge`, decided by `reep:<release>`).
+2. **Rules, for the rest.** Every Sofascore player is a Player. A Transfermarkt player links to the Sofascore player with the same birth date and the same name. An Understat player links to the Sofascore teammate who played the same Matches for the same Club with the same name and minutes.
+3. **Fuzzy scoring.** Other close candidates are scored on name, co-appearance and minutes. A clear best links as `fuzzy`; the rest stay pending for the LLM judge.
+
+Results go to the Alembic-managed `identity` schema: `identity.players`, and `identity.identity_candidates` with each Candidate's method, confidence, status and evidence. A re-run proposes only Source Records that have no Candidate yet. The one exception is a rejected Reep link: setting a `reep_bridge` Candidate's status to `rejected` lets the rules link its Source Record on the next run. Transfermarkt has only the current squads, so players who left the Premier League since 24/25 have no Transfermarkt link.
 
 ## Development
 
@@ -186,7 +198,7 @@ uv run lint-imports        # provider SDKs only inside agent/providers/<provider
 
 ## Data disclaimer
 
-This project collects data from third-party websites for personal, non-commercial research. No scraped data is stored in or distributed through this repository. If you run it, you are responsible for complying with each source's terms of service.
+This project collects data from third-party websites for personal, non-commercial research. No scraped data is stored in or distributed through this repository. The same goes for the Reep register's releases: they are CC0 but derived from providers' data, so they stay under `data/` and in the database. If you run it, you are responsible for complying with each source's terms of service.
 
 ## Prior work
 
