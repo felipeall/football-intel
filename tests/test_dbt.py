@@ -155,3 +155,20 @@ async def test_dbt_links_matches_across_sources_by_season_and_clubs(
         ("2024:arsenal:chelsea", 2024, "arsenal", "chelsea", 1001, 1),
         ("2024:chelsea:arsenal", 2024, "chelsea", "arsenal", 1003, 2),
     ]
+
+
+async def test_dbt_never_writes_to_the_schemas_alembic_owns(
+    connection: AsyncConnection[Any], database_url: str, tmp_path: Path
+) -> None:
+    # A dbt relation in one of these schemas makes the next migration that creates or
+    # changes that schema fail against a database dbt has already built (ADR 31).
+    owned = """
+        SELECT table_schema, table_name FROM information_schema.tables
+        WHERE table_schema IN ('raw', 'identity', 'reference')
+        ORDER BY 1, 2
+    """
+    before = await (await connection.execute(owned)).fetchall()
+
+    _dbt_build(database_url, tmp_path)
+
+    assert await (await connection.execute(owned)).fetchall() == before
