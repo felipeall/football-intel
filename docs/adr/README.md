@@ -33,3 +33,4 @@
 - [31. Identity tables in Alembic; dbt in serialized Transform Runs](0031-identity-schema-and-transform-runs.md)
 - [32. The Reep register is the first mapping layer of Identity Resolution](0032-reep-first-mapping-layer.md)
 - [33. The Reep register maps Clubs; the club seed goes](0033-reep-maps-clubs.md)
+- [34. Canonical IDs are ours, not any source's](0034-canonical-ids-are-ours.md) — proposed
