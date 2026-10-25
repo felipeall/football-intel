@@ -50,3 +50,9 @@ models:
                 field: match_id
       - name: xg
         data_tests: [not_null]
+
+  - name: stg_understat__players
+    description: Every player with an Understat Appearance.
+    columns:
+      - name: player_id
+        data_tests: [unique, not_null]

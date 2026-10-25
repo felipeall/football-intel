@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: base_transfermarkt__responses
+    description: The latest successful Raw Response per Transfermarkt URL.
+    columns:
+      - name: url
+        data_tests: [unique, not_null]
+
+  - name: stg_transfermarkt__players
+    description: Transfermarkt players from the squad fan-out, with their current club.
+    columns:
+      - name: player_id
+        data_tests: [unique, not_null]
+      - name: name
+        data_tests: [not_null]

@@ -14,9 +14,9 @@ Decisions are recorded in [`docs/adr/`](docs/adr/).
 - **Captcha Token** — The short-lived JWT Sofascore issues in exchange for a solved Turnstile captcha. It is bound to the IP and to the client that exchanged it, and is valid for about an hour. Sofascore's API only answers requests that carry it ([ADR 30](docs/adr/0030-sofascore-captcha-token.md)).
 - **Token Provider** — The part of the Sofascore source that obtains Captcha Tokens. About once an hour, an anti-detect browser (camoufox) produces a Turnstile response, and `curl_cffi` exchanges it for the token its own requests carry ([ADR 30](docs/adr/0030-sofascore-captcha-token.md)).
 - **Source Record** — A source's own representation of an entity (player, club, match), keyed by that source's ID.
-- **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source.
+- **Player** — The canonical, cross-source identity of a footballer. One Player links to at most one Source Record per source. Every Sofascore player is a Player; other sources link to them. A Player's ID never changes.
 - **Identity Resolution** — The process of linking Source Records to a Player: deterministic rules, then fuzzy scoring, then an LLM judge, then human review below a confidence threshold.
-- **Identity Candidate** — A proposed link between a Source Record and a Player, with a confidence score and the method that produced it.
+- **Identity Candidate** — A proposed link between a Source Record and a Player, with a confidence score, the method that produced it (a rule, fuzzy scoring, the LLM judge or a reviewer) and a status: pending, accepted or rejected. An accepted Candidate is the link. Pending ones form the ambiguous band the LLM judge and human review decide.
 - **Transform Run** — One pass that builds dbt staging, runs Identity Resolution's automatic steps, then builds the marts. Only one runs at a time; it runs daily and on demand ([ADR 31](docs/adr/0031-identity-schema-and-transform-runs.md)).
 - **Club** — A football club, canonical across sources. Each source has its own ID for it; a hand-maintained seed maps them.
 - **Season** — One league season, named by its start year (2025 is 2025/26, written "25/26" by Sofascore). Understat and Transfermarkt use the start year too.

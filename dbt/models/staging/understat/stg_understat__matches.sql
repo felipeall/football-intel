@@ -19,9 +19,9 @@ select
     -- Understat's times are UTC.
     (fixture ->> 'datetime')::timestamp at time zone 'UTC' as kickoff_at,
     (fixture -> 'h' ->> 'id')::bigint as home_team_id,
-    fixture -> 'h' ->> 'title' as home_team_name,
+    {{ html_unescape("fixture -> 'h' ->> 'title'") }} as home_team_name,
     (fixture -> 'a' ->> 'id')::bigint as away_team_id,
-    fixture -> 'a' ->> 'title' as away_team_name,
+    {{ html_unescape("fixture -> 'a' ->> 'title'") }} as away_team_name,
     (fixture -> 'goals' ->> 'h')::int as home_goals,
     (fixture -> 'goals' ->> 'a')::int as away_goals,
     (fixture -> 'xG' ->> 'h')::numeric as home_xg,
