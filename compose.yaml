@@ -1,7 +1,9 @@
 name: football-intel
 
 # Langfuse v4 (ADR 18): web, worker, and its own Postgres, ClickHouse, Redis
-# and MinIO. Secrets come from .env; see .env.example.
+# and MinIO. Secrets come from .env; see .env.example. Nothing traces to it until the
+# agent lands, so it runs only with the `langfuse` profile:
+# `docker compose --profile langfuse up --wait`.
 x-langfuse-env: &langfuse-env
   NEXTAUTH_URL: http://localhost:${LANGFUSE_PORT}
   DATABASE_URL: postgresql://langfuse:${LANGFUSE_POSTGRES_PASSWORD}@langfuse-postgres:5432/langfuse
@@ -41,8 +43,12 @@ x-langfuse-depends-on: &langfuse-depends-on
   minio:
     condition: service_healthy
 
+# Profiles: `temporal` (Temporal, migrations and the ingestion worker) and `langfuse`.
+# Postgres has none, so it always runs. `.env` sets COMPOSE_PROFILES=temporal by default;
+# `COMPOSE_PROFILES= docker compose up` starts Postgres alone.
 services:
   temporal:
+    profiles: [temporal]
     image: temporalio/temporal:1.9.1
     # State in SQLite on a volume, so schedules and sleeping workflows survive a restart.
     # Mounted at the image user's home: a new mount point would be root-owned.
@@ -79,6 +85,7 @@ services:
 
   # Applies database migrations (ADR 29), then exits.
   migrate:
+    profiles: [temporal]
     build: .
     command: ["alembic", "upgrade", "head"]
     environment: &app-env
@@ -95,6 +102,7 @@ services:
         condition: service_healthy
 
   worker:
+    profiles: [temporal]
     build: .
     # Reaps the browser processes a failed Captcha Token attempt leaves behind (ADR 30).
     init: true
@@ -112,6 +120,7 @@ services:
   # Langfuse web and worker listen on the container hostname, not on loopback,
   # so their health checks call $$HOSTNAME.
   langfuse-web:
+    profiles: [langfuse]
     image: langfuse/langfuse:4.56.0
     depends_on: *langfuse-depends-on
     ports:
@@ -139,6 +148,7 @@ services:
       start_period: 20s
 
   langfuse-worker:
+    profiles: [langfuse]
     image: langfuse/langfuse-worker:4.56.0
     depends_on: *langfuse-depends-on
     environment: *langfuse-env
@@ -150,6 +160,7 @@ services:
       start_period: 20s
 
   langfuse-postgres:
+    profiles: [langfuse]
     image: postgres:17
     environment:
       POSTGRES_DB: langfuse
@@ -166,6 +177,7 @@ services:
       retries: 20
 
   clickhouse:
+    profiles: [langfuse]
     image: clickhouse/clickhouse-server:25.12.11.4
     user: "101:101"
     environment:
@@ -182,6 +194,7 @@ services:
       retries: 20
 
   redis:
+    profiles: [langfuse]
     image: redis:7.4
     command: ["--requirepass", "${LANGFUSE_REDIS_PASSWORD}", "--maxmemory-policy", "noeviction"]
     volumes:
@@ -195,6 +208,7 @@ services:
       REDIS_PASSWORD: ${LANGFUSE_REDIS_PASSWORD}
 
   minio:
+    profiles: [langfuse]
     image: cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56
     entrypoint: sh
     # Create the langfuse bucket before starting the server
