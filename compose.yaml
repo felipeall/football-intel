@@ -43,8 +43,12 @@ x-langfuse-depends-on: &langfuse-depends-on
   minio:
     condition: service_healthy
 
+# Profiles: `temporal` (Temporal, migrations and the ingestion worker) and `langfuse`.
+# Postgres has none, so it always runs. `.env` sets COMPOSE_PROFILES=temporal by default;
+# `COMPOSE_PROFILES= docker compose up` starts Postgres alone.
 services:
   temporal:
+    profiles: [temporal]
     image: temporalio/temporal:1.9.1
     # State in SQLite on a volume, so schedules and sleeping workflows survive a restart.
     # Mounted at the image user's home: a new mount point would be root-owned.
@@ -81,6 +85,7 @@ services:
 
   # Applies database migrations (ADR 29), then exits.
   migrate:
+    profiles: [temporal]
     build: .
     command: ["alembic", "upgrade", "head"]
     environment: &app-env
@@ -97,6 +102,7 @@ services:
         condition: service_healthy
 
   worker:
+    profiles: [temporal]
     build: .
     # Reaps the browser processes a failed Captcha Token attempt leaves behind (ADR 30).
     init: true
