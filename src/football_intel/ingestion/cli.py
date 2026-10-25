@@ -16,16 +16,24 @@ from football_intel.ingestion.models import (
     MatchIngestInput,
     SquadIngestInput,
     SquadIngestResult,
+    UnderstatIngestInput,
 )
-from football_intel.ingestion.schedules import POST_MATCH_SCHEDULE_ID, ensure_post_match_schedule
+from football_intel.ingestion.schedules import (
+    POST_MATCH_SCHEDULE_ID,
+    UNDERSTAT_SCHEDULE_ID,
+    ensure_post_match_schedule,
+    ensure_understat_schedule,
+)
 from football_intel.ingestion.workflows import (
     BackfillWorkflow,
     CompetitionSquadsWorkflow,
     MatchIngestWorkflow,
     SquadIngestWorkflow,
+    UnderstatIngestWorkflow,
 )
 from football_intel.sources.sofascore.seasons import PREMIER_LEAGUE as SOFASCORE_PREMIER_LEAGUE
 from football_intel.sources.transfermarkt.competitions import PREMIER_LEAGUE
+from football_intel.sources.understat.league import PREMIER_LEAGUE as UNDERSTAT_PREMIER_LEAGUE
 
 
 async def _client(settings: Settings) -> Client:
@@ -131,6 +139,30 @@ async def schedule_post_match(settings: Settings) -> None:
         await _client(settings), settings.temporal_task_queue
     )
     print(f"Schedule {POST_MATCH_SCHEDULE_ID} {outcome}: daily at 06:00 UTC")
+
+
+async def understat_backfill(settings: Settings, year: int | None, refresh: bool) -> None:
+    client = await _client(settings)
+    suffix = f"-{year}" if year is not None else ""
+    result = await client.execute_workflow(
+        UnderstatIngestWorkflow.run,
+        UnderstatIngestInput(league=UNDERSTAT_PREMIER_LEAGUE, year=year, refresh=refresh),
+        id=f"understat-{UNDERSTAT_PREMIER_LEAGUE}{suffix}",
+        task_queue=settings.temporal_task_queue,
+    )
+    for season in result.seasons:
+        print(
+            f"Understat {season.league} {season.year}: {season.matches} played Matches, "
+            f"{season.already_complete} already stored, {season.ingested} ingested, "
+            f"{len(season.failed_match_ids)} failed; {season.raw_responses} Raw Responses stored"
+        )
+        if season.failed_match_ids:
+            print(f"  Failed Matches: {', '.join(map(str, season.failed_match_ids))}")
+
+
+async def schedule_understat(settings: Settings) -> None:
+    outcome = await ensure_understat_schedule(await _client(settings), settings.temporal_task_queue)
+    print(f"Schedule {UNDERSTAT_SCHEDULE_ID} {outcome}: daily at 07:00 UTC")
 
 
 SUCCESS_RATE_COLUMNS = (
@@ -244,6 +276,20 @@ def main() -> None:
         help="create or update the daily Schedule that starts post-match workflows",
     )
 
+    understat_parser = commands.add_parser(
+        "understat-backfill",
+        help="store every played Premier League Match of the last three seasons from Understat",
+    )
+    understat_parser.add_argument(
+        "--season", type=int, help="only this season, by its start year, e.g. 2025 for 25/26"
+    )
+    understat_parser.add_argument("--refresh", action="store_true", help=refresh_help)
+
+    commands.add_parser(
+        "schedule-understat",
+        help="create or update the daily Schedule that stores new Understat Matches",
+    )
+
     today = datetime.now(UTC).date()
     rates = commands.add_parser(
         "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
@@ -269,6 +315,10 @@ def main() -> None:
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
     elif args.command == "schedule-post-match":
         asyncio.run(schedule_post_match(settings))
+    elif args.command == "schedule-understat":
+        asyncio.run(schedule_understat(settings))
+    elif args.command == "understat-backfill":
+        asyncio.run(understat_backfill(settings, args.season, args.refresh))
     elif args.command == "backfill":
         asyncio.run(
             backfill(settings, args.season, args.refresh, args.concurrency, not args.match_level)

@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: base_understat__responses
+    description: The latest successful Raw Response per Understat URL.
+    columns:
+      - name: url
+        data_tests: [unique, not_null]
+
+  - name: stg_understat__matches
+    description: Played Understat Matches, from each season's league data.
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: season_year
+        data_tests: [not_null]
+      - name: home_team_id
+        data_tests: [not_null]
+      - name: away_team_id
+        data_tests: [not_null]
+
+  - name: stg_understat__appearances
+    description: One Appearance per player with minutes in a played Understat Match.
+    columns:
+      - name: appearance_id
+        data_tests: [unique, not_null]
+      - name: match_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_understat__matches')
+                field: match_id
+      - name: player_id
+        data_tests: [not_null]
+      - name: minutes_played
+        data_tests: [not_null]
+
+  - name: stg_understat__shots
+    description: Understat Shots, with location and xG.
+    columns:
+      - name: shot_id
+        data_tests: [unique, not_null]
+      - name: match_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_understat__matches')
+                field: match_id
+      - name: xg
+        data_tests: [not_null]

@@ -1,6 +1,6 @@
 """Activities: all I/O of the ingestion workflows (HTTP, database) happens here."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import timedelta
 
@@ -25,9 +25,11 @@ from football_intel.ingestion.models import (
     SeasonsInput,
     SquadIngestInput,
     SquadIngestResult,
+    UnderstatSeasonInput,
+    UnderstatSeasonResult,
 )
 from football_intel.raw_responses import RawResponseStore
-from football_intel.sources import sofascore, transfermarkt
+from football_intel.sources import sofascore, transfermarkt, understat
 from football_intel.sources.interface import CircuitOpenError, SourceInterface
 from football_intel.sources.recording import RawResponseMissingError, RecordingTransport
 from football_intel.sources.sofascore.api import UpstreamError
@@ -45,6 +47,8 @@ from football_intel.sources.sofascore.seasons import (
 )
 from football_intel.sources.transfermarkt.competitions import fetch_competition_clubs
 from football_intel.sources.transfermarkt.squads import fetch_squad
+from football_intel.sources.understat import api as understat_api
+from football_intel.sources.understat import league as understat_league
 
 
 class TransfermarktActivities:
@@ -210,6 +214,80 @@ class SofascoreActivities:
 
     def _recording(self, refresh: bool) -> AbstractAsyncContextManager[RecordingTransport]:
         return _recording(self._database_url, self._source, sofascore.recording_transport, refresh)
+
+
+class UnderstatActivities:
+    """Understat activities. `source` is the worker's one Understat source interface."""
+
+    def __init__(self, database_url: str, source: SourceInterface) -> None:
+        self._database_url = database_url
+        self._source = source
+
+    @activity.defn
+    async def ingest_season(self, input: UnderstatSeasonInput) -> UnderstatSeasonResult:
+        """Store a league season's data, then every played Match not stored yet.
+
+        The league data is always fetched: it changes as Matches are played. A played Match
+        does not change, so a stored answer for it decides, not the Freshness Window. A Match
+        that fails is listed and the others go on; a retry of the activity only fetches what
+        is still missing.
+        """
+        async with self._recording(refresh=True) as transport:
+            season = await understat_league.fetch_league_season(
+                _Heartbeat(transport), input.league, input.year
+            )
+            raw_responses = transport.recorded
+        complete: set[int] = (
+            set() if input.refresh else await self._complete(season.finished_match_ids)
+        )
+        pending = [m for m in season.finished_match_ids if m not in complete]
+        failed: list[int] = []
+        async with self._recording(refresh=True) as transport:
+            for match_id in pending:
+                try:
+                    await understat_league.fetch_match(_Heartbeat(transport), match_id)
+                except (understat_league.MatchDataMissing, understat_api.UpstreamError) as error:
+                    activity.logger.warning("Understat Match %s failed: %s", match_id, error)
+                    failed.append(match_id)
+            raw_responses += transport.recorded
+        activity.logger.info(
+            "Understat %s %s: %d played Matches, %d already stored, %d fetched, %d failed",
+            input.league,
+            input.year,
+            len(season.finished_match_ids),
+            len(complete),
+            len(pending) - len(failed),
+            len(failed),
+        )
+        return UnderstatSeasonResult(
+            league=input.league,
+            year=input.year,
+            matches=len(season.finished_match_ids),
+            already_complete=len(complete),
+            ingested=len(pending) - len(failed),
+            failed_match_ids=failed,
+            raw_responses=raw_responses,
+        )
+
+    async def _complete(self, match_ids: Sequence[int]) -> set[int]:
+        """The Matches whose latest stored answer is their data."""
+        complete: set[int] = set()
+        async with await AsyncConnection.connect(self._database_url, autocommit=True) as conn:
+            replay = understat.replay_transport(RawResponseStore(conn))
+            for match_id in match_ids:
+                try:
+                    await understat_league.fetch_match(replay, match_id)
+                except (
+                    RawResponseMissingError,
+                    understat_league.MatchDataMissing,
+                    understat_api.UpstreamError,
+                ):
+                    continue
+                complete.add(match_id)
+        return complete
+
+    def _recording(self, refresh: bool) -> AbstractAsyncContextManager[RecordingTransport]:
+        return _recording(self._database_url, self._source, understat.recording_transport, refresh)
 
 
 class _Heartbeat(httpx.AsyncBaseTransport):

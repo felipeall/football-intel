@@ -7,7 +7,11 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from football_intel.config import Settings
-from football_intel.ingestion.activities import SofascoreActivities, TransfermarktActivities
+from football_intel.ingestion.activities import (
+    SofascoreActivities,
+    TransfermarktActivities,
+    UnderstatActivities,
+)
 from football_intel.ingestion.workflows import (
     BackfillWorkflow,
     CompetitionSquadsWorkflow,
@@ -16,8 +20,9 @@ from football_intel.ingestion.workflows import (
     PostMatchWorkflow,
     SeasonBackfillWorkflow,
     SquadIngestWorkflow,
+    UnderstatIngestWorkflow,
 )
-from football_intel.sources import sofascore
+from football_intel.sources import sofascore, understat
 from football_intel.sources.impersonation import impersonating_backend
 from football_intel.sources.interface import SourceInterface
 from football_intel.sources.sofascore.captcha import (
@@ -44,6 +49,9 @@ async def run_worker(settings: Settings) -> None:
     )
     activities = TransfermarktActivities(settings.database_url, transfermarkt)
     match_activities = SofascoreActivities(settings.database_url, sofascore_source)
+    understat_activities = UnderstatActivities(
+        settings.database_url, SourceInterface(understat.SOURCE, settings.understat)
+    )
     worker = Worker(
         client,
         task_queue=settings.temporal_task_queue,
@@ -55,6 +63,7 @@ async def run_worker(settings: Settings) -> None:
             BackfillWorkflow,
             PostMatchWorkflow,
             FixturesWorkflow,
+            UnderstatIngestWorkflow,
         ],
         activities=[
             activities.ingest_club_squad,
@@ -65,6 +74,7 @@ async def run_worker(settings: Settings) -> None:
             match_activities.complete_matches,
             match_activities.upcoming_fixtures,
             match_activities.match_status,
+            understat_activities.ingest_season,
         ],
     )
     await worker.run()
