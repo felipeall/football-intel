@@ -31,4 +31,4 @@
 - [29. Database migrations: Alembic with plain SQL](0029-migrations-alembic.md)
 - [30. Sofascore through a captcha token that a browser obtains](0030-sofascore-captcha-token.md)
 - [31. Identity tables in Alembic; dbt in serialized Transform Runs](0031-identity-schema-and-transform-runs.md)
-- [32. The Reep register corroborates Identity Resolution](0032-reep-register-corroboration.md) — proposed
+- [32. The Reep register is the first mapping layer of Identity Resolution](0032-reep-first-mapping-layer.md)
