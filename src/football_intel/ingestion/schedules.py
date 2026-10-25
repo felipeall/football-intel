@@ -10,6 +10,7 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleRange,
     ScheduleSpec,
+    ScheduleState,
     ScheduleUpdate,
     ScheduleUpdateInput,
 )
@@ -24,11 +25,14 @@ RUN_AT_HOUR_UTC = 6
 UNDERSTAT_SCHEDULE_ID = "understat-daily"
 # After the night's Matches: Understat has their data by morning.
 UNDERSTAT_RUN_AT_HOUR_UTC = 7
+# Ingestion runs by hand while the stack is local; a Schedule is created paused, and
+# `temporal schedule toggle --unpause` starts it.
+PAUSED = ScheduleState(paused=True, note="Paused: ingestion runs by hand while the stack is local")
 
 
 def post_match_schedule(task_queue: str) -> Schedule:
     """Daily at 06:00 UTC, read the Premier League's fixtures and start their post-match
-    workflows. A run still going at the next one's time makes that one skip."""
+    workflows. A run still going at the next one's time makes that one skip. Created paused."""
     return Schedule(
         action=ScheduleActionStartWorkflow(
             FixturesWorkflow.run,
@@ -38,6 +42,7 @@ def post_match_schedule(task_queue: str) -> Schedule:
         ),
         spec=ScheduleSpec(calendars=[ScheduleCalendarSpec(hour=[ScheduleRange(RUN_AT_HOUR_UTC)])]),
         policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        state=PAUSED,
     )
 
 
@@ -52,7 +57,7 @@ async def ensure_post_match_schedule(client: Client, task_queue: str) -> str:
 def understat_schedule(task_queue: str) -> Schedule:
     """Daily at 07:00 UTC, store the current Premier League season's Understat data and the
     Matches played since the last run. A run still going at the next one's time makes that
-    one skip."""
+    one skip. Created paused."""
     return Schedule(
         action=ScheduleActionStartWorkflow(
             UnderstatIngestWorkflow.run,
@@ -64,6 +69,7 @@ def understat_schedule(task_queue: str) -> Schedule:
             calendars=[ScheduleCalendarSpec(hour=[ScheduleRange(UNDERSTAT_RUN_AT_HOUR_UTC)])]
         ),
         policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        state=PAUSED,
     )
 
 

@@ -134,3 +134,4 @@ async def test_the_schedule_command_is_idempotent(temporal: WorkflowEnvironment)
     assert isinstance(calendar, ScheduleCalendarSpec)
     assert [hour.start for hour in calendar.hour] == [7]
     assert schedule.policy.overlap == ScheduleOverlapPolicy.SKIP
+    assert schedule.state.paused
