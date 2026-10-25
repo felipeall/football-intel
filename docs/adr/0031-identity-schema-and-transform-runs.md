@@ -1,6 +1,6 @@
 # 31. Identity tables in Alembic; dbt in serialized Transform Runs
 
-Status: Proposed — 2026-10-25. Amends ADR 11 (transform layer) and ADR 29 (migrations).
+Status: Accepted — 2026-10-25. Amends ADR 11 (transform layer) and ADR 29 (migrations).
 
 ## Context
 

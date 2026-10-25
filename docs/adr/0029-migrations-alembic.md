@@ -1,6 +1,6 @@
 # 29. Database migrations: Alembic with plain SQL
 
-Status: Accepted — 2026-10-12
+Status: Accepted — 2026-10-12. Amended by ADR 31 (identity schema).
 
 ## Context
 The raw schema (Raw Responses, ADR 28) needs versioned, repeatable schema changes, applied the same way on a developer machine, in CI and later on Neon (ADR 22). dbt (ADR 11) owns staging and marts, so migrations only cover the tables that ingestion writes. Options weighed:
