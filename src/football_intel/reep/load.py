@@ -66,6 +66,8 @@ async def load(conn: AsyncConnection[Any], manifest: Manifest, bridges: list[Bri
         ) as copy:
             for bridge in bridges:
                 await copy.write_row((manifest.release, *bridge))
+    # Fresh statistics, or the planner joins the bridges by nested loop: minutes, not seconds.
+    await conn.execute("ANALYZE reference.reep_player_bridges")
 
 
 def manifest_from(directory: Path, release: str) -> Manifest:
