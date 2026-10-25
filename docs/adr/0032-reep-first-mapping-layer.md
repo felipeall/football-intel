@@ -23,15 +23,7 @@ A review of an earlier draft (on #58) proposed using Reep only as evidence for t
   - The bridge's `rule_id` and `route_scope` are kept as evidence.
   - Both IDs must be ones we hold: the Sofascore player in `stg_sofascore__players`, and the Transfermarkt or Understat player in its staging model.
 - **Where Reep has no mapping, our rules decide,** as in ADR 6: deterministic rules, fuzzy scoring, the LLM judge and human review. They only see Source Records that Reep did not link. So the order is Reep, then rules, then fuzzy scoring, then the judge, then review.
-- **A pinned release.**
-  - The release tag is set in configuration.
-  - A command downloads the release's bridges, redirects and manifest into `data/reep/<tag>/`, outside version control, and verifies each file against the manifest's checksums.
-  - A failed checksum stops the load.
-  - The manifest's gate result is recorded, but does not block the load.
-- **Loading.**
-  - Bridges are loaded with redirects resolved, into an Alembic-managed table (ADR 29) in a `reference` schema, keyed by release tag.
-  - The table holds only persons that Reep maps to a Sofascore player, with their Sofascore, Transfermarkt and Understat IDs: about 28k rows per release.
-  - The worker reads that table; it never reads the Parquet files.
+- **A pinned release, downloaded and loaded by hand.** The steps are under *Release management* below. The worker reads only the loaded table, never the Parquet files.
 - **Reep IDs for players we have not ingested are not Candidates.** A link needs a Source Record we hold.
 - **Upgrades.**
   - A new release links Source Records that have no Candidate yet.
@@ -40,6 +32,37 @@ A review of an earlier draft (on #58) proposed using Reep only as evidence for t
 - **Unchanged:**
   - Sofascore anchors Players.
   - A Player has at most one link per source.
+
+## Release management
+Reep publishes data releases on `data.reep.football`, named by a stamp such as `2026-10-25.1`, often more than one a week. The code tags of the `withqwerty/reep` GitHub repository are not data releases. Nothing pushes a notice of a new release, and no Schedule checks for one (schedules are off while the stack is local). Each step below is a command run by hand.
+
+**Pinning.** `REEP__RELEASE` in `.env` names the release to use, for example `REEP__RELEASE=2026-10-25.1`. The tag is always explicit, never "latest".
+
+**Checking for a new release: `football-intel reep-status`.** It downloads only small JSON files, never the bridges:
+
+1. `https://data.reep.football/releases/latest.json`: its `stamp` is the current release.
+2. The manifest of each release from the pinned one up to the current one: `https://data.reep.football/releases/<stamp>/manifest.json`. Each manifest's `diff` describes the change from its predecessor: new bridges per provider, entity deltas, ID retention, redirects, and the gate result.
+
+It prints the pinned release, the releases loaded into the database, the current release, and the changes in between for Sofascore, Transfermarkt and Understat. That is enough to decide whether an upgrade is worth the download.
+
+**Downloading and loading: `football-intel load-reep`.** For the pinned release, it:
+
+1. **Fetches the manifest** from `https://data.reep.football/releases/<tag>/manifest.json` and keeps it as `data/reep/<tag>/manifest.json`.
+2. **Downloads** `bridges.parquet` (about 376 MB, every entity type) and `redirects.parquet` (under 1 MB) from `https://data.reep.football/releases/<tag>/` into `data/reep/<tag>/`. The links on reep.football's downloads page were broken when this was written ("latest.json missing manifest_url"); the release URLs are not.
+3. **Verifies each file's SHA-256** against the manifest's `checksums_sha256`. A mismatch stops the command. Files already present with the right checksum are not downloaded again.
+4. **Keeps player bridges** for Sofascore (`player`), Transfermarkt (`spieler`) and Understat (`player`), with each Reep ID resolved through the redirects to its survivor. Only persons that Reep maps to a Sofascore player are kept, about 28k.
+5. **Loads them** into the `reference` table under the tag, replacing that tag's rows if it was loaded before, and records the manifest's gate result and diff with it.
+
+`data/` is outside version control, so the files stay on the machine that ran the command. The hosted stack (M7) runs the same command against its own database.
+
+**Upgrading.**
+
+1. Run `reep-status`.
+2. Set `REEP__RELEASE` to the new stamp.
+3. Run `load-reep`.
+4. Run `resolve-identities`, which uses the pinned release's rows and stops if they are not loaded.
+
+The new release only links Source Records that have no Candidate yet (see *Upgrades*). Older tags' rows can be deleted once no longer pinned. Candidates keep their `decided_by = reep:<tag>`, so their origin stays traceable.
 
 ## Proposed, not implemented: our data can veto Reep
 Before accepting a Reep bridge, check that our own data does not contradict it:
@@ -55,6 +78,7 @@ This would catch errors like the André bridge in cases where we hold both recor
 - **Fewer cases for our own matching:** on today's data, Reep links about 855 Source Records, and our rules handle about 550 more where Reep has no mapping.
 - **Reep's errors become our errors.** In the spike that was 1 in 855. Such a link is fixed by rejecting its Candidate. Our rules then link the Source Record on the next run.
 - **New pinned dependency:** a Parquet reader in the loader (`duckdb` or `pyarrow`), plus about 400 MB per release download under `data/`.
+- **Upgrades are manual.** Without a Schedule, a new release is noticed only when someone runs `reep-status`. Once schedules are back, a weekly check could post the diff to an issue.
 - **Reep data stays local.** It is CC0, but derived from providers' data, so it stays under `data/` and in the database, and is not redistributed (ADR 4).
 - **Out of scope:** Reep's IDs for clubs, competitions and matches. They could replace the hand-made club seed (#46), and need their own decision.
 - **Rejected:**
