@@ -4,6 +4,7 @@ profile: football_intel
 
 model-paths: ["models"]
 macro-paths: ["macros"]
+seed-paths: ["seeds"]
 test-paths: ["tests"]
 
 models:
@@ -14,6 +15,10 @@ models:
     marts:
       +schema: marts
       +materialized: table
+
+seeds:
+  football_intel:
+    +schema: reference
 
 flags:
   send_anonymous_usage_stats: false
