@@ -1,6 +1,6 @@
 # 33. The Reep register maps Clubs; the club seed goes
 
-Status: Accepted — 2026-10-25. Extends ADR 32 (Reep, first for players) to Clubs.
+Status: Superseded by ADR 34 — 2026-10-25. Extended ADR 32 (Reep, first for players) to Clubs.
 
 ## Context
 Canonical Clubs (#46) come from a hand-made dbt seed, `club_source_ids.csv`: 25 rows, each mapping a Club to its Sofascore, Understat and Transfermarkt IDs. Every Club new to the league needs a row by hand, or `dbt build` fails its not-null test. ADR 32 made the pinned Reep release the first mapping layer for players, and left club IDs out of scope.
