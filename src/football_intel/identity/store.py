@@ -13,7 +13,8 @@ SOFASCORE = "sofascore"
 
 class IdentityStore:
     """Writes Players and Identity Candidates. A Source Record is only ever proposed once:
-    a re-run leaves earlier Candidates, accepted, pending or rejected, as they are."""
+    a re-run leaves earlier Candidates, accepted, pending or rejected, as they are, except
+    that a rejected Reep link reopens its Source Record."""
 
     def __init__(self, connection: AsyncConnection[Any]) -> None:
         self._connection = connection
@@ -56,9 +57,15 @@ class IdentityStore:
         would give a Player a second link from the same source waits for the judge instead.
         Returns how many Candidates were stored.
         """
+        # A Source Record whose only Candidates are rejected Reep links is open again, so the
+        # rules can link it once a reviewer rejects a wrong Reep link (ADR 32).
         cursor = await self._connection.execute(
-            "SELECT DISTINCT source_record_id FROM identity.identity_candidates WHERE source = %s",
-            (source,),
+            """
+            SELECT source_record_id FROM identity.identity_candidates WHERE source = %s
+            GROUP BY source_record_id
+            HAVING bool_or(NOT (method = %s AND status = 'rejected'))
+            """,
+            (source, Method.REEP_BRIDGE),
         )
         proposed = {row[0] for row in await cursor.fetchall()}
         cursor = await self._connection.execute(
@@ -75,7 +82,7 @@ class IdentityStore:
                 continue
             player_id = players[proposal.sofascore_player_id]
             accepted = proposal.accepted and player_id not in linked
-            await self._insert(
+            inserted = await self._insert(
                 source,
                 proposal.source_record_id,
                 player_id,
@@ -83,7 +90,10 @@ class IdentityStore:
                 proposal.confidence,
                 "accepted" if accepted else "pending",
                 proposal.evidence,
+                proposal.decided_by,
             )
+            if not inserted:
+                continue  # the same link was proposed before and rejected
             if accepted:
                 linked.add(player_id)
             stored += 1
@@ -111,8 +121,10 @@ class IdentityStore:
         confidence: float,
         status: str,
         evidence: dict[str, Any],
-    ) -> None:
-        await self._connection.execute(
+        decided_by: str | None = None,
+    ) -> bool:
+        """Whether the Candidate was stored: a pair already proposed, and rejected, is not."""
+        cursor = await self._connection.execute(
             """
             INSERT INTO identity.identity_candidates
                 (source, source_record_id, player_id, method, confidence, status, evidence,
@@ -120,6 +132,7 @@ class IdentityStore:
             VALUES (%s, %s, %s, %s, %s, %s, %s,
                     CASE WHEN %s = 'pending' THEN NULL ELSE now() END,
                     CASE WHEN %s = 'pending' THEN NULL ELSE %s END)
+            ON CONFLICT (source, source_record_id, player_id) DO NOTHING
             """,
             (
                 source,
@@ -131,6 +144,7 @@ class IdentityStore:
                 Jsonb(evidence),
                 status,
                 status,
-                f"rule:{method}",
+                decided_by or f"rule:{method}",
             ),
         )
+        return cursor.rowcount == 1

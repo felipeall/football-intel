@@ -32,6 +32,7 @@ FUZZY_MARGIN = 0.1
 
 class Method:
     SOFASCORE_ANCHOR = "sofascore_anchor"
+    REEP_BRIDGE = "reep_bridge"
     NAME_BIRTH_DATE = "name_birth_date"
     CO_APPEARANCE = "co_appearance"
     FUZZY = "fuzzy"
@@ -63,10 +64,49 @@ class Proposal:
     method: str
     confidence: float
     evidence: dict[str, Any] = field(default_factory=dict[str, Any])
+    # Who decided an accepted Proposal; the rule's method when None.
+    decided_by: str | None = None
 
     @property
     def accepted(self) -> bool:
         return self.confidence >= ACCEPT_FROM
+
+
+@dataclass(frozen=True)
+class ReepBridge:
+    """A Reep release mapping a Transfermarkt or Understat player to a Sofascore player."""
+
+    source_record_id: int
+    sofascore_player_id: int
+    rule_id: str | None = None
+    route_scope: str | None = None
+
+
+def reep_proposals(
+    release: str,
+    bridges: Iterable[ReepBridge],
+    held: set[int],
+    sofascore: set[int],
+) -> list[Proposal]:
+    """Reep decides first (ADR 32): a bridge between a Source Record we hold (`held`) and a
+    Sofascore player we hold is a link. A Source Record Reep maps to more than one of our
+    Sofascore players is left to the rules."""
+    targets: dict[int, list[ReepBridge]] = defaultdict(list)
+    for bridge in bridges:
+        if bridge.source_record_id in held and bridge.sofascore_player_id in sofascore:
+            targets[bridge.source_record_id].append(bridge)
+    return [
+        Proposal(
+            record,
+            found[0].sofascore_player_id,
+            Method.REEP_BRIDGE,
+            1.0,
+            {"release": release, "rule_id": found[0].rule_id, "route_scope": found[0].route_scope},
+            decided_by=f"reep:{release}",
+        )
+        for record, found in sorted(targets.items())
+        if len({bridge.sofascore_player_id for bridge in found}) == 1
+    ]
 
 
 def transfermarkt_proposals(
