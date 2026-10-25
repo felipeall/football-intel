@@ -37,3 +37,11 @@ models:
         data_tests: [not_null]
       - name: minutes_played
         data_tests: [not_null]
+
+  - name: stg_sofascore__players
+    description: Every player in a stored Sofascore lineup, with birth date and nationality.
+    columns:
+      - name: player_id
+        data_tests: [unique, not_null]
+      - name: name
+        data_tests: [not_null]

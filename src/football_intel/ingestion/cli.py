@@ -10,6 +10,7 @@ from temporalio.client import Client
 
 from football_intel.config import Settings
 from football_intel.fetch_attempts import FetchAttemptStore, SuccessRate
+from football_intel.identity.workflows import IdentityResolutionWorkflow
 from football_intel.ingestion.models import (
     BackfillInput,
     CompetitionSquadsInput,
@@ -165,6 +166,21 @@ async def schedule_understat(settings: Settings) -> None:
     print(f"Schedule {UNDERSTAT_SCHEDULE_ID} {outcome}: daily at 07:00 UTC, paused")
 
 
+async def resolve_identities(settings: Settings) -> None:
+    client = await _client(settings)
+    result = await client.execute_workflow(
+        IdentityResolutionWorkflow.run,
+        id="identity-resolution",
+        task_queue=settings.temporal_task_queue,
+    )
+    print(
+        f"Identity Resolution: {result.players_created} Players created, "
+        f"{result.candidates_stored} Candidates stored"
+    )
+    for count in result.candidates:
+        print(f"  {count.source:<13} {count.method:<17} {count.status:<9} {count.count:>5}")
+
+
 SUCCESS_RATE_COLUMNS = (
     "source",
     "day",
@@ -290,6 +306,11 @@ def main() -> None:
         help="create or update the daily Schedule that stores new Understat Matches",
     )
 
+    commands.add_parser(
+        "resolve-identities",
+        help="link staged Source Records to Players; run after dbt builds staging and marts",
+    )
+
     today = datetime.now(UTC).date()
     rates = commands.add_parser(
         "success-rates", help="print each source's Fetch Attempts and success rate per day (UTC)"
@@ -315,6 +336,8 @@ def main() -> None:
         asyncio.run(success_rates(settings, args.first_day, args.last_day))
     elif args.command == "schedule-post-match":
         asyncio.run(schedule_post_match(settings))
+    elif args.command == "resolve-identities":
+        asyncio.run(resolve_identities(settings))
     elif args.command == "schedule-understat":
         asyncio.run(schedule_understat(settings))
     elif args.command == "understat-backfill":

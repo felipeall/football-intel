@@ -11,7 +11,7 @@ select
     (shot ->> 'id')::bigint as shot_id,
     match_data.match_id,
     (shot ->> 'player_id')::bigint as player_id,
-    shot ->> 'player' as player_name,
+    {{ html_unescape("shot ->> 'player'") }} as player_name,
     case shot ->> 'h_a' when 'h' then 'home' else 'away' end as side,
     (shot ->> 'minute')::int as minute,
     shot ->> 'result' as result,
@@ -21,7 +21,7 @@ select
     shot ->> 'situation' as situation,
     shot ->> 'shotType' as shot_type,
     shot ->> 'lastAction' as last_action,
-    shot ->> 'player_assisted' as assisted_by
+    {{ html_unescape("shot ->> 'player_assisted'") }} as assisted_by
 from match_data
 cross join lateral (values ('h'), ('a')) as side (side)
 cross join lateral jsonb_array_elements(match_data.body_json -> 'shots' -> side.side) as shot

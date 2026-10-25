@@ -18,7 +18,7 @@ select
     (entry ->> 'id')::bigint as appearance_id,
     entries.match_id,
     (entry ->> 'player_id')::bigint as player_id,
-    entry ->> 'player' as player_name,
+    {{ html_unescape("entry ->> 'player'") }} as player_name,
     (entry ->> 'team_id')::bigint as team_id,
     case entries.side when 'h' then 'home' else 'away' end as side,
     entry ->> 'position' as position,
