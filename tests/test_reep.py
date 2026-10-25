@@ -20,15 +20,18 @@ RELEASE = "2026-01-02.1"
 PREVIOUS = "2026-01-01.1"
 
 # Person A: Sofascore 1, Transfermarkt 10, Understat 100. Person B was merged into A (a
-# redirect), and still carries A's second Transfermarkt bridge. Person C has no Sofascore
-# bridge, so it is not loaded. A team bridge and another namespace are noise.
+# redirect), and still carries A's Understat bridge. Person C has no Sofascore bridge, so it
+# is not loaded. Team T is Arsenal on all three providers; team U has no Sofascore bridge.
 BRIDGES = [
     ("rA", "sofascore", "player", "1", "player"),
     ("rA", "transfermarkt", "spieler", "10", "player"),
     ("rB", "understat", "player", "100", "player"),
     ("rC", "transfermarkt", "spieler", "30", "player"),
-    ("rA", "transfermarkt", "verein", "11", "team"),
     ("rT", "sofascore", "team", "42", "team"),
+    ("rT", "understat", "team", "83", "team"),
+    ("rT", "transfermarkt", "verein", "11", "team"),
+    ("rT", "transfermarkt", "team", "999", "team"),  # Reep's other Transfermarkt namespace
+    ("rU", "understat", "team", "84", "team"),  # no Sofascore bridge: not loaded
 ]
 REDIRECTS = [("rB", "rA")]
 
@@ -144,6 +147,16 @@ def test_only_players_with_a_sofascore_bridge_load_with_redirects_resolved(
         ("rA", "sofascore", "1"),
         ("rA", "transfermarkt", "10"),
         ("rA", "understat", "100"),
+    ]
+
+
+def test_teams_load_per_provider_with_transfermarkt_verein_ids(tmp_path: Path) -> None:
+    _write_release(tmp_path)
+
+    assert load.team_bridges(tmp_path) == [
+        ("rT", "sofascore", "42"),
+        ("rT", "transfermarkt", "11"),
+        ("rT", "understat", "83"),
     ]
 
 

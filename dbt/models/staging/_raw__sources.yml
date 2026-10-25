@@ -5,3 +5,10 @@ sources:
     description: Raw Responses as ingestion stored them (ADR 28), owned by Alembic (ADR 29).
     tables:
       - name: raw_responses
+
+  - name: reference
+    description: >
+      The pinned Reep release's bridges (ADR 32, ADR 33), loaded by `football-intel load-reep`,
+      owned by Alembic. dbt reads them for the release in REEP__RELEASE and never writes here.
+    tables:
+      - name: reep_team_bridges

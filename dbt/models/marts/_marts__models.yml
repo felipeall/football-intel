@@ -10,10 +10,18 @@ models:
         data_tests: [not_null]
 
   - name: clubs
-    description: Canonical Clubs, with each source's ID.
+    description: >
+      Canonical Clubs from the pinned Reep release (ADR 33): the Reep team ID, Sofascore's
+      name, and each source's ID.
     columns:
       - name: club_id
         data_tests: [unique, not_null]
+      - name: sofascore_team_id
+        data_tests: [unique]
+      - name: understat_team_id
+        data_tests: [unique]
+      - name: transfermarkt_club_id
+        data_tests: [unique]
 
   - name: matches
     description: >

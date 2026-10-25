@@ -19,10 +19,33 @@ from tests.sofascore_stub import NOT_STARTED_EVENT_ID, SofascoreStub
 from tests.understat_stub import ARSENAL, CHELSEA, LEAGUE, UnderstatStub
 
 DBT_PROJECT = Path(__file__).parent.parent / "dbt"
+REEP_RELEASE = "2026-01-02.1"
+# A made-up Reep release mapping the stubs' clubs (ADR 33): Arsenal is Sofascore 42,
+# Understat 83, Transfermarkt 11; Chelsea is 38, 80, 631.
+REEP_TEAMS = {
+    "rt_arsenal": {"sofascore": "42", "understat": "83", "transfermarkt": "11"},
+    "rt_chelsea": {"sofascore": "38", "understat": "80", "transfermarkt": "631"},
+}
 
 
-def _dbt_build(database_url: str, tmp_path: Path) -> None:
-    """`dbt build` against the test database, as a subprocess, as it runs from the CLI."""
+@pytest.fixture(autouse=True)
+async def reep_teams(connection: AsyncConnection[Any]) -> None:
+    await connection.execute("TRUNCATE reference.reep_releases CASCADE")
+    await connection.execute(
+        "INSERT INTO reference.reep_releases (release, manifest) VALUES (%s, '{}')",
+        (REEP_RELEASE,),
+    )
+    for reep_id, ids in REEP_TEAMS.items():
+        for provider, external_id in ids.items():
+            await connection.execute(
+                "INSERT INTO reference.reep_team_bridges VALUES (%s, %s, %s, %s)",
+                (REEP_RELEASE, reep_id, provider, external_id),
+            )
+
+
+def _dbt_build(database_url: str, tmp_path: Path, succeeds: bool = True) -> str:
+    """`dbt build` against the test database, as a subprocess, as it runs from the CLI.
+    Returns its output."""
     conninfo = conninfo_to_dict(database_url)
     env = os.environ | {
         "POSTGRES_HOST": str(conninfo["host"]),
@@ -30,6 +53,7 @@ def _dbt_build(database_url: str, tmp_path: Path) -> None:
         "POSTGRES_DB": str(conninfo["dbname"]),
         "POSTGRES_USER": str(conninfo["user"]),
         "POSTGRES_PASSWORD": str(conninfo.get("password", "")),
+        "REEP__RELEASE": REEP_RELEASE,
     }
     dbt = Path(sys.executable).parent / "dbt"
     args = ["--project-dir", DBT_PROJECT, "--profiles-dir", DBT_PROJECT]
@@ -37,7 +61,8 @@ def _dbt_build(database_url: str, tmp_path: Path) -> None:
     result = subprocess.run(
         [dbt, "build", *args, *paths], env=env, capture_output=True, text=True, check=False
     )
-    assert result.returncode == 0, result.stdout[-4000:]
+    assert (result.returncode == 0) == succeeds, result.stdout[-4000:]
+    return result.stdout
 
 
 async def _store_matches(connection: AsyncConnection[Any]) -> None:
@@ -152,8 +177,8 @@ async def test_dbt_links_matches_across_sources_by_season_and_clubs(
     # Sofascore names the season "24/25", Understat 2024; their team IDs differ. The Clubs
     # and the season link them, so each fixture is one Match with both IDs.
     assert await cursor.fetchall() == [
-        ("2024:arsenal:chelsea", 2024, "arsenal", "chelsea", 1001, 1),
-        ("2024:chelsea:arsenal", 2024, "chelsea", "arsenal", 1003, 2),
+        ("2024:rt_arsenal:rt_chelsea", 2024, "rt_arsenal", "rt_chelsea", 1001, 1),
+        ("2024:rt_chelsea:rt_arsenal", 2024, "rt_chelsea", "rt_arsenal", 1003, 2),
     ]
 
 
@@ -172,3 +197,32 @@ async def test_dbt_never_writes_to_the_schemas_alembic_owns(
     _dbt_build(database_url, tmp_path)
 
     assert await (await connection.execute(owned)).fetchall() == before
+
+
+async def test_a_club_reep_does_not_map_fails_the_build(
+    connection: AsyncConnection[Any], database_url: str, tmp_path: Path
+) -> None:
+    await _store_matches(connection)
+    await connection.execute("DELETE FROM reference.reep_team_bridges WHERE reep_id = 'rt_chelsea'")
+
+    output = _dbt_build(database_url, tmp_path, succeeds=False)
+
+    assert "not_null_matches_away_club_id" in output
+
+
+async def test_clubs_come_from_the_pinned_reep_release(
+    connection: AsyncConnection[Any], database_url: str, tmp_path: Path
+) -> None:
+    await _store_matches(connection)
+
+    _dbt_build(database_url, tmp_path)
+
+    cursor = await connection.execute(
+        "SELECT club_id, name, sofascore_team_id, understat_team_id, transfermarkt_club_id"
+        " FROM marts.clubs ORDER BY club_id"
+    )
+    # Sofascore's name for each (the stubs call every team "Home FC" or "Away FC").
+    assert [row[0:1] + row[2:] for row in await cursor.fetchall()] == [
+        ("rt_arsenal", 42, 83, 11),
+        ("rt_chelsea", 38, 80, 631),
+    ]

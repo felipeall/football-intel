@@ -11,8 +11,8 @@ with sofascore as (
         matches.home_goals,
         matches.away_goals
     from {{ ref('stg_sofascore__matches') }} as matches
-    left join {{ ref('club_source_ids') }} as home on home.sofascore_team_id = matches.home_team_id
-    left join {{ ref('club_source_ids') }} as away on away.sofascore_team_id = matches.away_team_id
+    left join {{ ref('clubs') }} as home on home.sofascore_team_id = matches.home_team_id
+    left join {{ ref('clubs') }} as away on away.sofascore_team_id = matches.away_team_id
 ),
 
 understat as (
@@ -25,8 +25,8 @@ understat as (
         matches.home_goals,
         matches.away_goals
     from {{ ref('stg_understat__matches') }} as matches
-    left join {{ ref('club_source_ids') }} as home on home.understat_team_id = matches.home_team_id
-    left join {{ ref('club_source_ids') }} as away on away.understat_team_id = matches.away_team_id
+    left join {{ ref('clubs') }} as home on home.understat_team_id = matches.home_team_id
+    left join {{ ref('clubs') }} as away on away.understat_team_id = matches.away_team_id
 )
 
 select

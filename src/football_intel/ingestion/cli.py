@@ -229,12 +229,15 @@ async def load_reep(settings: Settings) -> None:
     async with reep_release.client() as api:
         manifest = await reep_release.download(api, release, directory)
     bridges = reep_load.player_bridges(directory)
+    teams = reep_load.team_bridges(directory)
     async with await AsyncConnection.connect(settings.database_url, autocommit=True) as conn:
-        await reep_load.load(conn, manifest, bridges)
+        await reep_load.load(conn, manifest, bridges, teams)
     persons = len({bridge[0] for bridge in bridges})
+    clubs = len({team[0] for team in teams})
     print(
-        f"Reep {release}: {persons} persons with a Sofascore player, {len(bridges)} bridges "
-        f"loaded; release gate passed: {manifest.gate_passed}"
+        f"Reep {release}: {persons} persons and {clubs} teams with a Sofascore ID; "
+        f"{len(bridges)} player and {len(teams)} team bridges loaded; "
+        f"release gate passed: {manifest.gate_passed}"
     )
 
 
