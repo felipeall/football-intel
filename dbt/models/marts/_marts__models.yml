@@ -8,3 +8,38 @@ models:
         data_tests: [unique, not_null]
       - name: minutes_played
         data_tests: [not_null]
+
+  - name: clubs
+    description: Canonical Clubs, with each source's ID.
+    columns:
+      - name: club_id
+        data_tests: [unique, not_null]
+
+  - name: matches
+    description: >
+      Canonical Matches across Sofascore and Understat, keyed by season, home Club and away
+      Club. A Match one source has not stored yet has that source's ID null.
+    columns:
+      - name: match_id
+        data_tests: [unique, not_null]
+      - name: season
+        data_tests: [not_null]
+      - name: home_club_id
+        description: Null when a source's club is missing from the club seed.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('clubs')
+                field: club_id
+      - name: away_club_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('clubs')
+                field: club_id
+      - name: sofascore_match_id
+        data_tests: [unique]
+      - name: understat_match_id
+        data_tests: [unique]

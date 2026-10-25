@@ -15,8 +15,8 @@ from football_intel.raw_responses import RawResponseStore
 from football_intel.sources import sofascore, understat
 from football_intel.sources.sofascore.matches import MatchNotFinished, fetch_match
 from football_intel.sources.understat import league as understat_league
-from tests.sofascore_stub import NOT_STARTED_EVENT_ID, PLAYED, SofascoreStub
-from tests.understat_stub import AWAY_TEAM, HOME_TEAM, LEAGUE, UnderstatStub
+from tests.sofascore_stub import NOT_STARTED_EVENT_ID, SofascoreStub
+from tests.understat_stub import ARSENAL, CHELSEA, LEAGUE, UnderstatStub
 
 DBT_PROJECT = Path(__file__).parent.parent / "dbt"
 
@@ -73,15 +73,15 @@ async def test_dbt_builds_matches_appearances_and_season_minutes(
     )
     # A re-fetched Match counts once, and a Match not started is not a Match yet.
     assert await cursor.fetchall() == [
-        (1001, "24/25", 1, 2, 2, 1),
-        (1003, "24/25", 1, 2, 2, 1),
+        (1001, "24/25", 42, 38, 2, 1),
+        (1003, "24/25", 38, 42, 2, 1),
     ]
     cursor = await connection.execute(
-        "SELECT DISTINCT player_id, team_id FROM staging.stg_sofascore__appearances"
-        " ORDER BY player_id"
+        "SELECT player_id, team_id FROM staging.stg_sofascore__appearances"
+        " WHERE match_id = 1001 ORDER BY player_id"
     )
-    # The unused substitute has no minutes, so no Appearance.
-    assert await cursor.fetchall() == [(p, p // 10) for p in PLAYED]
+    # The unused substitute has no minutes, so no Appearance. Home players take the home team.
+    assert await cursor.fetchall() == [(11, 42), (12, 42), (21, 38), (22, 38)]
     cursor = await connection.execute(
         "SELECT player_id, season_year, appearances, minutes_played"
         " FROM marts.player_season_minutes ORDER BY player_id"
@@ -121,14 +121,37 @@ async def test_dbt_builds_understat_matches_appearances_and_shots(
         " FROM staging.stg_understat__appearances ORDER BY player_id"
     )
     assert await cursor.fetchall() == [
-        (1, 801, HOME_TEAM, "home", 90),
-        (1, 802, HOME_TEAM, "home", 75),
-        (1, 803, AWAY_TEAM, "away", 90),
-        (1, 804, AWAY_TEAM, "away", 15),
+        (1, 801, ARSENAL, "home", 90),
+        (1, 802, ARSENAL, "home", 75),
+        (1, 803, CHELSEA, "away", 90),
+        (1, 804, CHELSEA, "away", 15),
     ]
     cursor = await connection.execute(
         "SELECT match_id, player_id, side, x, y, xg FROM staging.stg_understat__shots"
     )
     assert await cursor.fetchall() == [
         (1, 801, "home", Decimal("0.9"), Decimal("0.5"), Decimal("0.25"))
+    ]
+
+
+async def test_dbt_links_matches_across_sources_by_season_and_clubs(
+    connection: AsyncConnection[Any], database_url: str, tmp_path: Path
+) -> None:
+    await _store_matches(connection)
+    recording = understat.recording_transport(
+        UnderstatStub().transport(), RawResponseStore(connection), FetchAttemptStore(connection)
+    )
+    await understat_league.fetch_league_season(recording, LEAGUE, 2024)
+
+    _dbt_build(database_url, tmp_path)
+
+    cursor = await connection.execute(
+        "SELECT match_id, season, home_club_id, away_club_id, sofascore_match_id,"
+        " understat_match_id FROM marts.matches ORDER BY match_id"
+    )
+    # Sofascore names the season "24/25", Understat 2024; their team IDs differ. The Clubs
+    # and the season link them, so each fixture is one Match with both IDs.
+    assert await cursor.fetchall() == [
+        ("2024:arsenal:chelsea", 2024, "arsenal", "chelsea", 1001, 1),
+        ("2024:chelsea:arsenal", 2024, "chelsea", "arsenal", 1003, 2),
     ]

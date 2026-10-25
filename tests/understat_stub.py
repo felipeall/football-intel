@@ -16,17 +16,29 @@ FIXTURES: dict[int, list[tuple[int, bool]]] = {
     2025: [(4, True)],
 }
 MISSING_MATCH_ID = 2
-HOME_TEAM, AWAY_TEAM = 71, 72
+# Understat team IDs of real clubs, so the club seed maps them: Arsenal (83) and Chelsea
+# (80), each at home once in 2024.
+ARSENAL, CHELSEA = 83, 80
+MATCH_TEAMS = {
+    1: (ARSENAL, CHELSEA),
+    2: (CHELSEA, ARSENAL),
+    3: (ARSENAL, 88),
+    4: (ARSENAL, CHELSEA),
+}
 # Understat names players itself; IDs 801-804 are made up.
 ROSTER = {"h": [(801, 90), (802, 75)], "a": [(803, 90), (804, 15)]}
+
+
+def _teams(match_id: int) -> tuple[int, int]:
+    return MATCH_TEAMS.get(match_id, (ARSENAL, CHELSEA))
 
 
 def _fixture(match_id: int, played: bool) -> dict[str, Any]:
     return {
         "id": str(match_id),
         "isResult": played,
-        "h": {"id": str(HOME_TEAM), "title": "Home FC", "short_title": "HOM"},
-        "a": {"id": str(AWAY_TEAM), "title": "Away FC", "short_title": "AWA"},
+        "h": {"id": str(_teams(match_id)[0]), "title": "Home FC", "short_title": "HOM"},
+        "a": {"id": str(_teams(match_id)[1]), "title": "Away FC", "short_title": "AWA"},
         "goals": {"h": "2", "a": "1"} if played else {"h": None, "a": None},
         "xG": {"h": "1.5", "a": "0.75"} if played else {"h": None, "a": None},
         "datetime": f"2025-01-0{match_id} 15:00:00",
@@ -40,7 +52,7 @@ def match_data(match_id: int) -> dict[str, Any]:
                 "id": str(match_id * 1000 + player_id),
                 "player_id": str(player_id),
                 "player": f"Player {player_id}",
-                "team_id": str(HOME_TEAM if side == "h" else AWAY_TEAM),
+                "team_id": str(_teams(match_id)[0 if side == "h" else 1]),
                 "h_a": side,
                 "time": str(minutes),
                 "position": "MC",
