@@ -64,7 +64,7 @@ Seven milestones in order, no deadlines ([ADR 27](docs/adr/0027-milestones-witho
 | Milestone | Phase | Delivery | Status |
 |---|---|---|---|
 | M1 | PoC | Compose stack, source interface, Transfermarkt, raw response cache, CI | ✅ |
-| M2 | PoC | Sofascore, post-match workflows, three-season backfill | 🚧 |
+| M2 | PoC | Sofascore, post-match workflows, three-season Match-level backfill (full pass in M7) | ✅ |
 | M3 | PoC | Understat, dbt, identity resolution | ⏳ |
 | M4 | PoC | Style profiles, agent tools, `ClaudeRunner` + `ScriptedRunner`, MCP server — Claude Desktop answers locally | ⏳ |
 | M5 | MVP | Evals in CI, durable scouting report job | ⏳ |
