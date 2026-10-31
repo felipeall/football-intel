@@ -32,4 +32,5 @@
 - [30. Sofascore through a captcha token that a browser obtains](0030-sofascore-captcha-token.md)
 - [31. Identity tables in Alembic; dbt in serialized Transform Runs](0031-identity-schema-and-transform-runs.md)
 - [32. The Reep register is the first mapping layer of Identity Resolution](0032-reep-first-mapping-layer.md)
-- [33. The Reep register maps Clubs; the club seed goes](0033-reep-maps-clubs.md)
+- [33. The Reep register maps Clubs; the club seed goes](0033-reep-maps-clubs.md) — superseded
+- [34. Canonical IDs are ours, created from Reep, then Transfermarkt](0034-canonical-ids-are-ours.md)
